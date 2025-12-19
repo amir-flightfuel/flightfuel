@@ -1,0 +1,3732 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlightFuel - Air Route Planner</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@8.2.0/ol.css">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-blue: #1a73e8;
+            --dark-blue: #0d47a1;
+            --light-blue: #e8f0fe;
+            --accent-red: #ea4335;
+            --accent-green: #34a853;
+            --accent-yellow: #fbbc05;
+            --gray-bg: #f5f5f5;
+            --gray-light: #f8f9fa;
+            --gray-medium: #dadce0;
+            --gray-dark: #5f6368;
+            --text-dark: #202124;
+            --text-light: #5f6368;
+            --white: #ffffff;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 25px rgba(0,0,0,0.1);
+            --border-radius: 8px;
+            --border-radius-sm: 4px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--gray-bg);
+            color: var(--text-dark);
+            overflow: hidden;
+        }
+
+        .top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: var(--white);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            z-index: 1000;
+            border-bottom: 1px solid var(--gray-medium);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary-blue);
+            margin-right: 40px;
+        }
+
+        .logo i {
+            font-size: 28px;
+        }
+
+        .search-container {
+            flex: 1;
+            max-width: 500px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .search-box {
+            flex: 1;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 16px 10px 45px;
+            border: 1px solid var(--gray-medium);
+            border-radius: 24px;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray-dark);
+            font-size: 16px;
+        }
+
+        .search-btn {
+            padding: 10px 20px;
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+
+        .search-btn:hover {
+            background: var(--dark-blue);
+            transform: translateY(-1px);
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+            padding-top: 60px;
+        }
+
+        /* ==================== RESIZABLE SIDEBAR ==================== */
+        .sidebar {
+            width: 320px;
+            min-width: 250px;
+            max-width: 500px;
+            background: var(--white);
+            border-right: 1px solid var(--gray-medium);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            z-index: 900;
+            position: relative;
+            resize: horizontal;
+            overflow: auto;
+        }
+
+        /* دسته تغییر اندازه */
+        .resize-handle {
+            position: absolute;
+            right: -5px;
+            top: 0;
+            bottom: 0;
+            width: 10px;
+            cursor: col-resize;
+            z-index: 1000;
+            background: transparent;
+            transition: background 0.2s;
+        }
+
+        .resize-handle:hover,
+        .resize-handle.resizing {
+            background: rgba(26, 115, 232, 0.3);
+        }
+
+        .resize-handle::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 2px;
+            transform: translateY(-50%);
+            width: 6px;
+            height: 40px;
+            background: var(--primary-blue);
+            border-radius: 3px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .resize-handle:hover::after,
+        .resize-handle.resizing::after {
+            opacity: 1;
+        }
+
+        /* وقتی در حال resize هست */
+        .resizing {
+            user-select: none;
+        }
+
+        /* Hide the default resize corner */
+        .sidebar::-webkit-resizer {
+            display: none;
+        }
+
+        /* برای مرورگرهای فایرفاکس */
+        @supports (-moz-appearance: none) {
+            .sidebar {
+                overflow: hidden;
+            }
+        }
+
+        /* وقتی sidebar کوچک میشه */
+        .sidebar.collapsed {
+            width: 50px;
+            min-width: 50px;
+            padding: 20px 10px;
+        }
+
+        .sidebar.collapsed .sidebar-content {
+            opacity: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .sidebar.collapsed .resize-handle {
+            display: none;
+        }
+
+        /* دکمه collapse/expand */
+        .collapse-btn {
+            position: absolute;
+            right: -15px;
+            top: 20px;
+            width: 30px;
+            height: 30px;
+            background: var(--primary-blue);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 910;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow-sm);
+            border: 2px solid var(--white);
+        }
+
+        .collapse-btn:hover {
+            background: var(--dark-blue);
+            transform: scale(1.1);
+        }
+
+        .collapse-btn i {
+            font-size: 14px;
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar.collapsed .collapse-btn i {
+            transform: rotate(180deg);
+        }
+
+        /* وقتی ماوس روی مرز sidebar هست */
+        .sidebar:hover .resize-handle::after {
+            opacity: 0.5;
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--gray-medium);
+        }
+
+        .sidebar-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title i {
+            color: var(--primary-blue);
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            background: #e9eef2;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .map-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 800;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group {
+            background: var(--white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow-md);
+            overflow: hidden;
+            border: 1px solid var(--gray-medium);
+        }
+
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: var(--white);
+            color: var(--text-dark);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: var(--light-blue);
+            color: var(--primary-blue);
+        }
+
+        .control-btn.active {
+            background: var(--primary-blue);
+            color: var(--white);
+        }
+
+        .control-btn:not(:last-child) {
+            border-bottom: 1px solid var(--gray-medium);
+        }
+
+        .fir-tooltip, .wp-tooltip {
+            position: absolute;
+            padding: 12px;
+            border-radius: var(--border-radius-sm);
+            font-size: 13px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: var(--shadow-lg);
+            max-width: 300px;
+            min-width: 200px;
+        }
+
+        .fir-tooltip {
+            background: rgba(234, 67, 53, 0.95);
+            color: var(--white);
+            border: 2px solid var(--white);
+        }
+
+        .wp-tooltip {
+            background: rgba(32, 33, 36, 0.95);
+            color: var(--white);
+            border: 2px solid var(--primary-blue);
+        }
+
+        .tooltip-arrow {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -6px;
+            border-width: 6px;
+            border-style: solid;
+            border-color: inherit;
+            border-top-color: transparent;
+            border-left-color: transparent;
+            border-right-color: transparent;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-dark);
+            margin-bottom: 6px;
+        }
+
+        .airport-select {
+            width: 100% !important;
+        }
+
+        .select2-container--default .select2-selection--single {
+            height: 42px;
+            border: 1px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+        }
+
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 42px;
+            padding-left: 12px;
+        }
+
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 42px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--border-radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary-blue);
+            color: var(--white);
+        }
+
+        .btn-primary:hover {
+            background: var(--dark-blue);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-secondary {
+            background: var(--gray-light);
+            color: var(--text-dark);
+            border: 1px solid var(--gray-medium);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-medium);
+        }
+
+        .btn-success {
+            background: var(--accent-green);
+            color: var(--white);
+        }
+
+        .btn-success:hover {
+            background: #2e8b57;
+        }
+
+        .btn-danger {
+            background: var(--accent-red);
+            color: var(--white);
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-warning {
+            background: var(--accent-yellow);
+            color: var(--text-dark);
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .mode-buttons {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+            background: var(--white);
+            color: var(--text-dark);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            border-color: var(--primary-blue);
+            background: var(--primary-blue);
+            color: var(--white);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .layer-controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .layer-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px;
+            background: var(--gray-light);
+            border-radius: var(--border-radius-sm);
+            border: 1px solid var(--gray-medium);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .layer-control:hover {
+            background: var(--light-blue);
+            border-color: var(--primary-blue);
+        }
+
+        .layer-control input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .layer-control label {
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-dark);
+            flex: 1;
+        }
+
+        .route-info-panel {
+            background: var(--light-blue);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            border: 1px solid var(--primary-blue);
+            margin-top: 20px;
+            display: none;
+        }
+
+        .route-info-panel.active {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        .route-details {
+            margin-top: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .route-details strong {
+            color: var(--primary-blue);
+        }
+
+        .edit-tools {
+            background: var(--gray-light);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            border: 1px solid var(--gray-medium);
+            margin-top: 20px;
+            display: none;
+        }
+
+        .edit-tools.active {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        .import-section {
+            background: var(--gray-light);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            border: 1px solid var(--gray-medium);
+        }
+
+        .import-section textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            margin-bottom: 12px;
+        }
+
+        .saved-routes-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 12px;
+        }
+
+        .route-item {
+            background: var(--white);
+            border: 1px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+            padding: 12px;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+
+        .route-item:hover {
+            border-color: var(--primary-blue);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .route-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .route-item-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .action-btn {
+            padding: 4px 10px;
+            font-size: 12px;
+            border-radius: 3px;
+        }
+
+        /* ==================== ROUTE SEARCH MODAL ==================== */
+        .route-search-modal {
+            display: none;
+            position: fixed;
+            z-index: 1100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .route-search-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .route-search-content {
+            background-color: var(--white);
+            padding: 30px;
+            border-radius: var(--border-radius);
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid var(--gray-medium);
+            animation: slideUp 0.3s ease;
+        }
+
+        .route-search-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--primary-blue);
+        }
+
+        .route-search-header h2 {
+            color: var(--primary-blue);
+            font-size: 22px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .close-search-modal {
+            background: none;
+            border: none;
+            font-size: 28px;
+            color: var(--gray-dark);
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .close-search-modal:hover {
+            background-color: var(--gray-light);
+            color: var(--accent-red);
+        }
+
+        .search-form {
+            margin-bottom: 25px;
+        }
+
+        .search-input-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+            font-size: 15px;
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+            outline: none;
+        }
+
+        .search-input::placeholder {
+            color: var(--gray-dark);
+        }
+
+        .search-swap-btn {
+            background: var(--gray-light);
+            border: 2px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .search-swap-btn:hover {
+            background: var(--gray-medium);
+            transform: rotate(180deg);
+        }
+
+        .search-submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius-sm);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s;
+        }
+
+        .search-submit-btn:hover {
+            background: var(--dark-blue);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .search-submit-btn:disabled {
+            background: var(--gray-medium);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .search-results-container {
+            margin-top: 25px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--gray-medium);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            background: var(--gray-light);
+        }
+
+        .search-results-header {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--gray-medium);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .results-count {
+            background: var(--primary-blue);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 30px 20px;
+            color: var(--text-light);
+        }
+
+        .no-results i {
+            font-size: 48px;
+            margin-bottom: 15px;
+            color: var(--gray-medium);
+        }
+
+        .no-results h4 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: var(--text-dark);
+        }
+
+        .no-results p {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .route-result-item {
+            background: var(--white);
+            border: 1px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+            padding: 15px;
+            margin-bottom: 12px;
+            transition: all 0.3s;
+        }
+
+        .route-result-item:hover {
+            border-color: var(--primary-blue);
+            box-shadow: var(--shadow-sm);
+            transform: translateX(5px);
+        }
+
+        .route-result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .route-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-blue);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .route-icao {
+            background: var(--light-blue);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+
+        .route-distance {
+            background: var(--accent-green);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .route-details-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+
+        .route-detail-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-light);
+        }
+
+        .route-detail-item strong {
+            color: var(--text-dark);
+        }
+
+        .route-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .load-route-btn {
+            flex: 1;
+            padding: 8px 15px;
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius-sm);
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .load-route-btn:hover {
+            background: var(--dark-blue);
+        }
+
+        .view-details-btn {
+            padding: 8px 15px;
+            background: var(--gray-light);
+            color: var(--text-dark);
+            border: 1px solid var(--gray-medium);
+            border-radius: var(--border-radius-sm);
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .view-details-btn:hover {
+            background: var(--gray-medium);
+        }
+
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading-spinner.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid var(--gray-light);
+            border-top: 3px solid var(--primary-blue);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .status-message {
+            padding: 10px 14px;
+            border-radius: var(--border-radius-sm);
+            margin-top: 12px;
+            font-size: 14px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .status-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+
+        .status-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .cursor-crosshair {
+            cursor: crosshair !important;
+        }
+
+        .cursor-grab {
+            cursor: grab !important;
+        }
+
+        .cursor-grabbing {
+            cursor: grabbing !important;
+        }
+
+        @media (max-width: 1200px) {
+            .sidebar {
+                width: 280px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .app-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                height: 300px;
+                border-right: none;
+                border-bottom: 1px solid var(--gray-medium);
+            }
+            
+            .map-controls {
+                top: 10px;
+                right: 10px;
+            }
+            
+            /* غیرفعال کردن resize در موبایل */
+            .sidebar {
+                resize: none;
+            }
+            
+            .resize-handle {
+                display: none;
+            }
+            
+            .collapse-btn {
+                display: none;
+            }
+
+            .route-search-content {
+                width: 95%;
+                padding: 20px;
+            }
+
+            .search-input-group {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .search-swap-btn {
+                transform: rotate(90deg);
+            }
+
+            .route-details-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .route-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- TOP BAR -->
+    <div class="top-bar">
+        <div class="logo">
+            <i class="fas fa-plane"></i>
+            <span>FlightFuel</span>
+        </div>
+        
+        <div class="search-container">
+            <div class="search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="globalSearch" placeholder="Search airports, waypoints, FIR...">
+            </div>
+            <button class="search-btn" id="searchButton">
+                <i class="fas fa-search"></i> Search
+            </button>
+            
+            <!-- دکمه جدید Route Search -->
+            <button class="search-btn" id="routeSearchBtn" style="margin-left: 10px;">
+                <i class="fas fa-route"></i> Route Search
+            </button>
+        </div>
+        
+        <div style="margin-left: auto; display: flex; gap: 20px; align-items: center;">
+            <button class="btn btn-primary" id="calculateFuel">
+                <i class="fas fa-gas-pump"></i> Calculate Fuel
+            </button>
+            <div class="user-info">
+                <i class="fas fa-user-circle" style="font-size: 24px; color: #5f6368;"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div class="app-container">
+        <!-- LEFT SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Resize Handle -->
+            <div class="resize-handle" id="resizeHandle"></div>
+            
+            <!-- محتوای اصلی sidebar -->
+            <div class="sidebar-content">
+                <!-- Route Builder Section -->
+                <div class="sidebar-section">
+                    <h3 class="section-title">
+                        <i class="fas fa-route"></i> Route Builder
+                    </h3>
+                    <div class="form-group">
+                        <label for="departureSelect">Departure Airport</label>
+                        <select id="departureSelect" class="airport-select">
+                            <option value="">Select departure airport</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="arrivalSelect">Arrival Airport</label>
+                        <select id="arrivalSelect" class="airport-select">
+                            <option value="">Select arrival airport</option>
+                        </select>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="showDirectRoute">
+                            <i class="fas fa-paper-plane"></i> Show Route
+                        </button>
+                        <button class="btn btn-secondary" id="clearRoute">
+                            <i class="fas fa-trash"></i> Clear
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Layer Controls (جابجا شده به بالا) -->
+                <div class="sidebar-section">
+                    <h3 class="section-title">
+                        <i class="fas fa-layer-group"></i> Layers
+                    </h3>
+                    <div class="layer-controls-grid">
+                        <div class="layer-control">
+                            <input type="checkbox" id="toggleAirports" checked>
+                            <label for="toggleAirports">
+                                <i class="fas fa-plane-departure"></i> Airports
+                            </label>
+                        </div>
+                        <div class="layer-control">
+                            <input type="checkbox" id="toggleWaypoints">
+                            <label for="toggleWaypoints">
+                                <i class="fas fa-map-marker-alt"></i> Waypoints
+                            </label>
+                        </div>
+                        <div class="layer-control">
+                            <input type="checkbox" id="toggleFIR">
+                            <label for="toggleFIR">
+                                <i class="fas fa-border-all"></i> FIR Regions
+                            </label>
+                        </div>
+                        <div class="layer-control">
+                            <input type="checkbox" id="toggleRoute">
+                            <label for="toggleRoute">
+                                <i class="fas fa-route"></i> Route
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode Selection (جابجا شده به پایین) -->
+                <div class="sidebar-section">
+                    <h3 class="section-title">
+                        <i class="fas fa-cogs"></i> Mode
+                    </h3>
+                    <div class="mode-buttons">
+                        <button class="mode-btn active" id="viewMode">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                        <button class="mode-btn" id="editMode">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Route Information -->
+                <div class="sidebar-section">
+                    <div id="routeInfo" class="route-info-panel">
+                        <h3 class="section-title">
+                            <i class="fas fa-info-circle"></i> Route Information
+                        </h3>
+                        <div class="route-details" id="routeDetails"></div>
+                    </div>
+                </div>
+
+                <!-- Edit Tools -->
+                <div class="sidebar-section">
+                    <div id="editTools" class="edit-tools">
+                        <h3 class="section-title">
+                            <i class="fas fa-tools"></i> Edit Tools
+                        </h3>
+                        <div class="btn-group">
+                            <button class="btn btn-success" id="enableEdit">
+                                <i class="fas fa-mouse-pointer"></i> Enable Editing
+                            </button>
+                            <button class="btn btn-warning" id="saveRoute">
+                                <i class="fas fa-save"></i> Save Route
+                            </button>
+                            <button class="btn btn-danger" id="disableEdit" style="display: none;">
+                                <i class="fas fa-times"></i> Disable Edit
+                            </button>
+                        </div>
+                        <div class="status-message status-info" id="editInstruction">
+                            Click "Enable Editing" to modify the route
+                        </div>
+                        <div class="status-message" id="snapInfo"></div>
+                    </div>
+                </div>
+
+                <!-- Import Route -->
+                <div class="sidebar-section">
+                    <div class="import-section">
+                        <h3 class="section-title">
+                            <i class="fas fa-file-import"></i> Import Route
+                        </h3>
+                        <textarea id="routeText" placeholder="Paste your route here (e.g. OIIE DHN1E DHN B411 ITELO L720 RIKOP...)" 
+                                  rows="3"></textarea>
+                        <button class="btn btn-warning" id="importRouteBtn">
+                            <i class="fas fa-upload"></i> Import Route
+                        </button>
+                        <div class="status-message" id="importResult"></div>
+                    </div>
+                </div>
+
+                <!-- Saved Routes -->
+                <div class="sidebar-section">
+                    <h3 class="section-title">
+                        <i class="fas fa-bookmark"></i> Saved Routes
+                    </h3>
+                    <button class="btn btn-secondary" id="loadRoutes">
+                        <i class="fas fa-sync"></i> Load Routes
+                    </button>
+                    <div class="saved-routes-list" id="routesList">
+                        <p style="color: var(--text-light); font-size: 14px; text-align: center; padding: 20px;">
+                            No saved routes yet
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN MAP AREA -->
+        <main class="map-container">
+            <div id="map" class="map"></div>
+            
+            <!-- Map Controls -->
+            <div class="map-controls">
+                <div class="control-group">
+                    <button class="control-btn" id="zoomIn" title="Zoom In">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <button class="control-btn" id="zoomOut" title="Zoom Out">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                    <button class="control-btn" id="resetView" title="Reset View">
+                        <i class="fas fa-home"></i>
+                    </button>
+                    <button class="control-btn" id="measureTool" title="Measure Distance">
+                        <i class="fas fa-ruler"></i>
+                    </button>
+                    <button class="control-btn" id="panTool" title="Pan Tool">
+                        <i class="fas fa-hand-paper"></i>
+                    </button>
+                    <button class="control-btn active" id="selectTool" title="Select Tool">
+                        <i class="fas fa-mouse-pointer"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tooltip Overlays -->
+            <div class="fir-tooltip" style="display: none;"></div>
+            <div class="wp-tooltip" style="display: none;"></div>
+        </main>
+    </div>
+
+    <!-- ROUTE SEARCH MODAL -->
+    <div class="route-search-modal" id="routeSearchModal">
+        <div class="route-search-content">
+            <div class="route-search-header">
+                <h2><i class="fas fa-route"></i> Route Search</h2>
+                <button class="close-search-modal" id="closeRouteSearchModal">
+                    &times;
+                </button>
+            </div>
+            
+            <div class="search-form">
+                <div class="search-input-group">
+                    <input type="text" 
+                           id="searchOrigin" 
+                           class="search-input" 
+                           placeholder="Origin IATA/ICAO (e.g., THR or OIII)"
+                           maxlength="4"
+                           autocapitalize="characters"
+                           title="Enter 3-letter IATA code (e.g., THR) or 4-letter ICAO code (e.g., OIII)">
+                    
+                    <button class="search-swap-btn" id="swapSearchInputs" title="Swap origin/destination">
+                        <i class="fas fa-exchange-alt"></i>
+                    </button>
+                    
+                    <input type="text" 
+                           id="searchDestination" 
+                           class="search-input" 
+                           placeholder="Destination IATA/ICAO (e.g., MHD or OIMM)"
+                           maxlength="4"
+                           autocapitalize="characters"
+                           title="Enter 3-letter IATA code (e.g., MHD) or 4-letter ICAO code (e.g., OIMM)">
+                </div>
+                
+                <div style="font-size: 12px; color: #666; margin: 8px 0; text-align: center;">
+                    <i class="fas fa-info-circle"></i> Enter 3-letter IATA (THR) or 4-letter ICAO (OIII) codes
+                </div>
+                
+                <button class="search-submit-btn" id="executeRouteSearch">
+                    <i class="fas fa-search"></i> Search Routes
+                </button>
+            </div>
+            
+            <div class="loading-spinner" id="searchLoadingSpinner">
+                <div class="spinner"></div>
+                <p>Searching for routes...</p>
+            </div>
+            
+            <div class="search-results-container" id="routeSearchResults">
+                <div class="search-results-header">
+                    <span>Search Results</span>
+                    <span class="results-count" id="resultsCount">0</span>
+                </div>
+                <div id="searchResultsContent">
+                    <div class="no-results">
+                        <i class="fas fa-route"></i>
+                        <h4>No Search Yet</h4>
+                        <p>Enter origin and destination ICAO codes to search for saved routes.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="https://cdn.jsdelivr.net/npm/ol@8.2.0/dist/ol.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script>
+        // ==================== INITIALIZATION ====================
+        console.log('FlightFuel Application Initializing...');
+
+        // ==================== GLOBALS ====================
+        const map = new ol.Map({
+            target: 'map',
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM({
+                        url: 'https://{a-c}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+                    })
+                })
+            ],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([51.3890, 35.6892]),
+                zoom: 5
+            }),
+            controls: [] // حذف controls پیش‌فرض OpenLayers
+        });
+
+        // ==================== MAP LAYERS ====================
+        const airportLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: '/api/airports/',
+                format: new ol.format.GeoJSON()
+            }),
+            visible: true,
+            style: new ol.style.Style({
+                image: new ol.style.Circle({
+                    radius: 6,
+                    fill: new ol.style.Fill({color: '#1a73e8'}),
+                    stroke: new ol.style.Stroke({color: 'white', width: 2})
+                })
+            })
+        });
+        map.addLayer(airportLayer);
+
+        const waypointLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: '/api/waypoints/',
+                format: new ol.format.GeoJSON()
+            }),
+            visible: false,
+            style: function(feature) {
+                const type = feature.get('type');
+                let color, icon;
+                
+                switch(type) {
+                    case 'VOR':
+                        color = '#FF6B35';
+                        icon = 'V';
+                        break;
+                    case 'NDB':
+                        color = '#34a853';
+                        icon = 'N';
+                        break;
+                    case 'AIRPORT':
+                        color = '#1a73e8';
+                        icon = 'A';
+                        break;
+                    default:
+                        color = '#5f6368';
+                        icon = 'W';
+                }
+                
+                return new ol.style.Style({
+                    image: new ol.style.Circle({
+                        radius: 5,
+                        fill: new ol.style.Fill({color: color}),
+                        stroke: new ol.style.Stroke({color: 'white', width: 1.5})
+                    }),
+                    text: new ol.style.Text({
+                        text: feature.get('identifier') + ' ' + icon,
+                        offsetY: -10,
+                        fill: new ol.style.Fill({color: color}),
+                        stroke: new ol.style.Stroke({color: 'white', width: 2}),
+                        font: 'bold 11px Arial'
+                    })
+                });
+            }
+        });
+        map.addLayer(waypointLayer);
+
+        const firLayer = new ol.layer.Vector({
+            source: new ol.source.Vector({
+                url: '/api/fir-geojson/',
+                format: new ol.format.GeoJSON()
+            }),
+            visible: false,
+            style: function(feature) {
+                const identifier = feature.get('identifier');
+                
+                return new ol.style.Style({
+                    stroke: new ol.style.Stroke({
+                        color: 'rgba(234, 67, 53, 0.7)',
+                        width: 2,
+                        lineDash: [5, 5]
+                    }),
+                    fill: new ol.style.Fill({
+                        color: 'rgba(234, 67, 53, 0.1)'
+                    }),
+                    text: new ol.style.Text({
+                        text: identifier,
+                        fill: new ol.style.Fill({color: '#ea4335'}),
+                        stroke: new ol.style.Stroke({color: 'white', width: 2}),
+                        offsetY: -20,
+                        font: 'bold 12px Arial',
+                        overflow: true
+                    })
+                });
+            }
+        });
+        map.addLayer(firLayer);
+
+        const routeLayer = new ol.layer.Vector({
+            source: new ol.source.Vector(),
+            visible: false,
+            style: new ol.style.Style({
+                stroke: new ol.style.Stroke({
+                    color: '#1a73e8',
+                    width: 3,
+                    lineDash: [5, 5]
+                }),
+                image: new ol.style.Circle({
+                    radius: 6,
+                    fill: new ol.style.Fill({color: '#1a73e8'}),
+                    stroke: new ol.style.Stroke({color: 'white', width: 2})
+                })
+            })
+        });
+        map.addLayer(routeLayer);
+
+        // ==================== TOOLTIPS ====================
+        const firTooltipElement = document.createElement('div');
+        firTooltipElement.className = 'fir-tooltip';
+        const firTooltipOverlay = new ol.Overlay({
+            element: firTooltipElement,
+            positioning: 'bottom-center',
+            offset: [0, -10],
+            stopEvent: false
+        });
+        map.addOverlay(firTooltipOverlay);
+
+        const wpTooltipElement = document.createElement('div');
+        wpTooltipElement.className = 'wp-tooltip';
+        const wpTooltipOverlay = new ol.Overlay({
+            element: wpTooltipElement,
+            positioning: 'bottom-center',
+            offset: [0, -15],
+            stopEvent: false
+        });
+        map.addOverlay(wpTooltipOverlay);
+
+        // ==================== MAP INTERACTIONS ====================
+        let modifyInteraction = null;
+        let snapInteraction = null;
+        let routeFeature = null;
+        let drawInteraction = null;
+        let measureInteraction = null;
+        let isEditingEnabled = false;
+        let currentTool = 'select';
+
+        // ==================== UTILITY FUNCTIONS ====================
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function calculateDistance(coord1, coord2) {
+            const [lon1, lat1] = coord1;
+            const [lon2, lat2] = coord2;
+            
+            const R = 3440.065;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status-message status-${type}`;
+            statusDiv.innerHTML = message;
+            statusDiv.style.position = 'fixed';
+            statusDiv.style.bottom = '20px';
+            statusDiv.style.right = '20px';
+            statusDiv.style.zIndex = '10000';
+            statusDiv.style.maxWidth = '300px';
+            document.body.appendChild(statusDiv);
+            
+            setTimeout(() => {
+                statusDiv.remove();
+            }, 3000);
+        }
+
+        // ==================== VALIDATION FUNCTIONS (IATA/ICAO) ====================
+        function validateAirportCode(code) {
+            code = code.toUpperCase().trim();
+            
+            // بررسی طول
+            if (code.length !== 3 && code.length !== 4) {
+                return {
+                    valid: false,
+                    message: 'Airport code must be 3 letters (IATA) or 4 letters (ICAO)'
+                };
+            }
+            
+            // بررسی حروف
+            if (!/^[A-Z]+$/.test(code)) {
+                return {
+                    valid: false,
+                    message: 'Airport code must contain only letters'
+                };
+            }
+            
+            return {
+                valid: true,
+                code: code,
+                type: code.length === 3 ? 'IATA' : 'ICAO'
+            };
+        }
+
+        // ==================== ROUTE SEARCH FUNCTIONS ====================
+        function openRouteSearchModal() {
+            const modal = document.getElementById('routeSearchModal');
+            modal.classList.add('active');
+            document.getElementById('searchOrigin').focus();
+            
+            // پاک کردن نتایج قبلی
+            document.getElementById('searchResultsContent').innerHTML = `
+                <div class="no-results">
+                    <i class="fas fa-route"></i>
+                    <h4>No Search Yet</h4>
+                    <p>Enter origin and destination airport codes (IATA or ICAO) to search for saved routes.</p>
+                </div>
+            `;
+            document.getElementById('resultsCount').textContent = '0';
+        }
+
+        function closeRouteSearchModal() {
+            const modal = document.getElementById('routeSearchModal');
+            modal.classList.remove('active');
+        }
+
+        function swapSearchInputs() {
+            const originInput = document.getElementById('searchOrigin');
+            const destinationInput = document.getElementById('searchDestination');
+            
+            const temp = originInput.value;
+            originInput.value = destinationInput.value;
+            destinationInput.value = temp;
+            
+            // uppercase کردن خودکار
+            originInput.value = originInput.value.toUpperCase();
+            destinationInput.value = destinationInput.value.toUpperCase();
+            
+            // فوکوس رو به origin ببر
+            originInput.focus();
+        }
+
+        function executeRouteSearch() {
+            const origin = document.getElementById('searchOrigin').value.trim().toUpperCase();
+            const destination = document.getElementById('searchDestination').value.trim().toUpperCase();
+            
+            // اعتبارسنجی جدید (هم IATA و هم ICAO)
+            const originValidation = validateAirportCode(origin);
+            const destinationValidation = validateAirportCode(destination);
+            
+            if (!originValidation.valid) {
+                showStatus(`Origin: ${originValidation.message}`, 'error');
+                document.getElementById('searchOrigin').focus();
+                return;
+            }
+            
+            if (!destinationValidation.valid) {
+                showStatus(`Destination: ${destinationValidation.message}`, 'error');
+                document.getElementById('searchDestination').focus();
+                return;
+            }
+            
+            // اعتبارسنجی یکسان نبودن
+            if (origin === destination) {
+                showStatus('Origin and destination cannot be the same', 'error');
+                return;
+            }
+            
+            // نمایش loading spinner
+            const loadingSpinner = document.getElementById('searchLoadingSpinner');
+            const searchButton = document.getElementById('executeRouteSearch');
+            const resultsContainer = document.getElementById('searchResultsContent');
+            
+            loadingSpinner.classList.add('active');
+            searchButton.disabled = true;
+            resultsContainer.innerHTML = '';
+            
+            // اجرای جستجو - استفاده از API جدید route-search
+            fetch(`/api/route-search/?origin=${origin}&destination=${destination}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    loadingSpinner.classList.remove('active');
+                    searchButton.disabled = false;
+                    
+                    if (data.status === 'error') {
+                        // اگر backend خطا داد
+                        showStatus(data.message, 'error');
+                        
+                        // نمایش پیام خطا در results
+                        resultsContainer.innerHTML = `
+                            <div class="no-results">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <h4>Search Error</h4>
+                                <p>${data.message}</p>
+                                ${data.suggestion ? `<p style="margin-top: 10px;">Suggestion: ${data.suggestion}</p>` : ''}
+                            </div>
+                        `;
+                        document.getElementById('resultsCount').textContent = '0';
+                    } else {
+                        // نمایش نتایج موفق
+                        displayRouteSearchResults(data.routes || [], origin, destination);
+                    }
+                })
+                .catch(error => {
+                    loadingSpinner.classList.remove('active');
+                    searchButton.disabled = false;
+                    
+                    console.error('Route search error:', error);
+                    
+                    resultsContainer.innerHTML = `
+                        <div class="no-results">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <h4>Search Error</h4>
+                            <p>Failed to search routes. Please try again.</p>
+                            <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
+                                Error: ${error.message}
+                            </p>
+                        </div>
+                    `;
+                    document.getElementById('resultsCount').textContent = '0';
+                    
+                    showStatus('Error searching routes', 'error');
+                });
+        }
+
+        function displayRouteSearchResults(routes, origin, destination) {
+            const resultsContainer = document.getElementById('searchResultsContent');
+            const resultsCount = document.getElementById('resultsCount');
+            
+            if (!routes || routes.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="no-results">
+                        <i class="fas fa-search"></i>
+                        <h4>No Routes Found</h4>
+                        <p>No saved routes found from ${origin} to ${destination}.</p>
+                        <p style="margin-top: 10px; font-size: 14px;">
+                            Try creating a new route using the Route Builder.
+                        </p>
+                    </div>
+                `;
+                resultsCount.textContent = '0';
+                return;
+            }
+            
+            resultsCount.textContent = routes.length;
+            
+            let html = '';
+            routes.forEach((route, index) => {
+                const routeName = route.name || `Route ${route.departure} to ${route.arrival}`;
+                const distance = route.total_distance ? `${route.total_distance.toFixed(1)} NM` : 'N/A';
+                const flightTime = route.flight_time || 'N/A';
+                const waypointCount = route.waypoints ? route.waypoints.length : 0;
+                const createdDate = route.created_at ? new Date(route.created_at).toLocaleDateString() : 'Unknown';
+                const createdBy = route.created_by || 'Unknown';
+                
+                html += `
+                    <div class="route-result-item" data-route-id="${route.id}">
+                        <div class="route-result-header">
+                            <div class="route-title">
+                                <i class="fas fa-route"></i>
+                                ${routeName}
+                            </div>
+                            <div class="route-distance">${distance}</div>
+                        </div>
+                        
+                        <div class="route-details-grid">
+                            <div class="route-detail-item">
+                                <i class="fas fa-plane-departure"></i>
+                                <strong>Origin:</strong>
+                                <span class="route-icao">${route.departure}</span>
+                            </div>
+                            <div class="route-detail-item">
+                                <i class="fas fa-plane-arrival"></i>
+                                <strong>Destination:</strong>
+                                <span class="route-icao">${route.arrival}</span>
+                            </div>
+                            <div class="route-detail-item">
+                                <i class="fas fa-clock"></i>
+                                <strong>Flight Time:</strong>
+                                <span>${flightTime}</span>
+                            </div>
+                            <div class="route-detail-item">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <strong>Waypoints:</strong>
+                                <span>${waypointCount}</span>
+                            </div>
+                            <div class="route-detail-item">
+                                <i class="fas fa-calendar"></i>
+                                <strong>Created:</strong>
+                                <span>${createdDate}</span>
+                            </div>
+                            <div class="route-detail-item">
+                                <i class="fas fa-user"></i>
+                                <strong>By:</strong>
+                                <span>${createdBy}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="route-actions">
+                            <button class="load-route-btn" onclick="loadRouteFromSearch(${route.id})">
+                                <i class="fas fa-map-marker-alt"></i> Load on Map
+                            </button>
+                            <button class="view-details-btn" onclick="viewRouteDetails(${route.id})">
+                                <i class="fas fa-info-circle"></i> Details
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsContainer.innerHTML = html;
+            
+            // نمایش پیام موفقیت
+            showStatus(`Found ${routes.length} route(s) from ${origin} to ${destination}`, 'success');
+        }
+
+        // Global function for loading routes from search
+        window.loadRouteFromSearch = function(routeId) {
+            console.log('Loading route from search:', routeId);
+            
+            fetch('/api/get-routes/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const route = data.routes.find(r => r.id === routeId);
+                        if (route) {
+                            // بستن modal
+                            closeRouteSearchModal();
+                            
+                            // بارگذاری مسیر روی نقشه
+                            loadRouteOnMap(route);
+                            
+                            showStatus(`Route "${route.name || 'Unnamed'}" loaded successfully`, 'success');
+                        } else {
+                            showStatus('Route not found', 'error');
+                        }
+                    } else {
+                        showStatus('Error loading route details', 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Load route error:', error);
+                    showStatus('Error loading route: ' + error, 'error');
+                });
+        };
+
+        function loadRouteOnMap(route) {
+            routeLayer.getSource().clear();
+            
+            if (!route.coordinates || !Array.isArray(route.coordinates)) {
+                showStatus('Error: Route has no valid coordinates data', 'error');
+                return;
+            }
+            
+            let coordinatesData = route.coordinates;
+            if (typeof coordinatesData === 'string') {
+                try {
+                    coordinatesData = JSON.parse(coordinatesData);
+                } catch (e) {
+                    console.error('Failed to parse coordinates:', e);
+                    showStatus('Error: Invalid coordinates format', 'error');
+                    return;
+                }
+            }
+            
+            if (!Array.isArray(coordinatesData)) {
+                showStatus('Error: Coordinates is not an array', 'error');
+                return;
+            }
+            
+            const coordinates = coordinatesData.map(coord => {
+                if (Array.isArray(coord) && coord.length >= 2) {
+                    return ol.proj.fromLonLat([coord[0], coord[1]]);
+                }
+                return ol.proj.fromLonLat([0, 0]);
+            }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
+            
+            if (coordinates.length < 2) {
+                showStatus('Error: Route has insufficient valid coordinates', 'error');
+                return;
+            }
+            
+            routeFeature = new ol.Feature({
+                geometry: new ol.geom.LineString(coordinates),
+                properties: {
+                    departure: route.departure,
+                    arrival: route.arrival,
+                    name: route.name
+                }
+            });
+            
+            routeLayer.getSource().addFeature(routeFeature);
+            routeLayer.setVisible(true);
+            document.getElementById('toggleRoute').checked = true;
+            sessionStorage.setItem('toggleRoute', 'true');
+            
+            // آپدیت اطلاعات مسیر
+            updateRouteInfoForSavedRoute(route);
+            document.getElementById('routeInfo').classList.add('active');
+            
+            // ست کردن مقادیر در select boxes
+            $('#departureSelect').val(route.departure).trigger('change');
+            $('#arrivalSelect').val(route.arrival).trigger('change');
+            
+            // زوم کردن به مسیر
+            zoomToRoute(coordinates);
+        }
+
+        function updateRouteInfoForSavedRoute(route) {
+            const distance = route.total_distance ? route.total_distance.toFixed(1) : 'N/A';
+            const flightTime = route.flight_time || 'N/A';
+            const waypointCount = route.waypoints ? route.waypoints.length : 0;
+            const altitude = route.cruise_altitude ? `${route.cruise_altitude.toLocaleString()} ft` : '35,000 ft';
+            
+            document.getElementById('routeDetails').innerHTML = `
+                <div><strong>Route:</strong> ${route.name || `Route ${route.departure} → ${route.arrival}`}</div>
+                <div><strong>From:</strong> ${route.departure}</div>
+                <div><strong>To:</strong> ${route.arrival}</div>
+                <div><strong>Total Distance:</strong> ${distance} NM</div>
+                <div><strong>Flight Time:</strong> ${flightTime}</div>
+                <div><strong>Waypoints:</strong> ${waypointCount}</div>
+                <div><strong>Cruise Altitude:</strong> ${altitude}</div>
+                ${route.description ? `<div><strong>Description:</strong> ${route.description}</div>` : ''}
+                <div><strong>Saved:</strong> ${route.created_at ? new Date(route.created_at).toLocaleDateString() : 'Unknown'}</div>
+            `;
+        }
+
+        function zoomToRoute(coordinates) {
+            if (coordinates.length > 0) {
+                const extent = new ol.geom.LineString(coordinates).getExtent();
+                map.getView().fit(extent, {
+                    padding: [50, 50, 50, 50],
+                    duration: 1000,
+                    maxZoom: 10
+                });
+            }
+        }
+
+        window.viewRouteDetails = function(routeId) {
+            // در اینجا می‌توانید یک modal جزئیات ایجاد کنید
+            alert(`Route ID: ${routeId}\nDetailed view coming soon...`);
+        };
+
+        // ==================== SHOW DIRECT ROUTE FUNCTION ====================
+        function showDirectRoute(departure, arrival) {
+            console.log('Creating route from', departure, 'to', arrival);
+            
+            // پاک کردن route قبلی
+            routeLayer.getSource().clear();
+            
+            // پیدا کردن مختصات واقعی airports از API
+            fetch('/api/airports/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to load airport data');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // پیدا کردن departure airport
+                    const depAirport = data.features.find(airport => 
+                        airport.properties.iata === departure || 
+                        airport.properties.icao === departure
+                    );
+                    
+                    // پیدا کردن arrival airport  
+                    const arrAirport = data.features.find(airport =>
+                        airport.properties.iata === arrival || 
+                        airport.properties.icao === arrival
+                    );
+                    
+                    if (!depAirport) {
+                        showStatus(`Departure airport ${departure} not found`, 'error');
+                        return;
+                    }
+                    
+                    if (!arrAirport) {
+                        showStatus(`Arrival airport ${arrival} not found`, 'error');
+                        return;
+                    }
+                    
+                    // گرفتن مختصات واقعی
+                    const depCoords = ol.proj.fromLonLat(depAirport.geometry.coordinates);
+                    const arrCoords = ol.proj.fromLonLat(arrAirport.geometry.coordinates);
+                    
+                    console.log('Departure coords:', depAirport.geometry.coordinates);
+                    console.log('Arrival coords:', arrAirport.geometry.coordinates);
+                    
+                    // ایجاد خط بین airports واقعی
+                    routeFeature = new ol.Feature({
+                        geometry: new ol.geom.LineString([depCoords, arrCoords]),
+                        properties: {
+                            departure: departure,
+                            arrival: arrival,
+                            depName: depAirport.properties.name,
+                            arrName: arrAirport.properties.name
+                        }
+                    });
+                    
+                    // اضافه کردن به لایه
+                    routeLayer.getSource().addFeature(routeFeature);
+                    routeLayer.setVisible(true);
+                    document.getElementById('toggleRoute').checked = true;
+                    sessionStorage.setItem('toggleRoute', 'true');
+                    
+                    // محاسبه و نمایش اطلاعات
+                    updateRouteInfo();
+                    document.getElementById('routeInfo').classList.add('active');
+                    
+                    console.log('Route created successfully');
+                    showStatus(`Route ${departure} → ${arrival} created!`, 'success');
+                })
+                .catch(error => {
+                    console.error('Error loading airports:', error);
+                    showStatus('Error: Could not load airport data. Using default coordinates.', 'error');
+                    
+                    // اگر API کار نکرد، حداقل خطی بکش
+                    const depCoords = ol.proj.fromLonLat([51.3890, 35.6892]); // تهران
+                    const arrCoords = ol.proj.fromLonLat([59.6400, 36.2350]); // مشهد
+                    
+                    routeFeature = new ol.Feature({
+                        geometry: new ol.geom.LineString([depCoords, arrCoords]),
+                        properties: {
+                            departure: departure,
+                            arrival: arrival
+                        }
+                    });
+                    
+                    routeLayer.getSource().addFeature(routeFeature);
+                    routeLayer.setVisible(true);
+                    document.getElementById('toggleRoute').checked = true;
+                    updateRouteInfo();
+                    document.getElementById('routeInfo').classList.add('active');
+                });
+        }
+
+        // ==================== UPDATE ROUTE INFO FUNCTION ====================
+        function updateRouteInfo() {
+            if (routeFeature) {
+                const geometry = routeFeature.getGeometry();
+                const coordinates = geometry.getCoordinates();
+                
+                // محاسبه مسافت
+                let totalDistance = 0;
+                for (let i = 0; i < coordinates.length - 1; i++) {
+                    const coord1 = ol.proj.toLonLat(coordinates[i]);
+                    const coord2 = ol.proj.toLonLat(coordinates[i + 1]);
+                    totalDistance += calculateDistance(coord1, coord2);
+                }
+                
+                const props = routeFeature.getProperties();
+                const depName = props.depName || props.departure;
+                const arrName = props.arrName || props.arrival;
+                
+                // نمایش اطلاعات
+                document.getElementById('routeDetails').innerHTML = `
+                    <div><strong>Route:</strong> ${props.departure} → ${props.arrival}</div>
+                    <div><strong>From:</strong> ${depName}</div>
+                    <div><strong>To:</strong> ${arrName}</div>
+                    <div><strong>Total Distance:</strong> ${totalDistance.toFixed(1)} NM</div>
+                    <div><strong>Estimated Time:</strong> ${(totalDistance / 450).toFixed(1)} hours</div>
+                    <div><strong>Waypoints:</strong> 2 (Direct)</div>
+                    <div><strong>Altitude:</strong> 35,000 ft</div>
+                `;
+            }
+        }
+
+        // ==================== TOOLTIP HANDLING ====================
+        map.on('pointermove', function(event) {
+            const pixel = map.getEventPixel(event.originalEvent);
+            
+            firTooltipOverlay.setPosition(undefined);
+            wpTooltipOverlay.setPosition(undefined);
+            map.getTarget().style.cursor = '';
+            
+            // Check FIR features
+            let feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+                if (layer === firLayer) {
+                    return feature;
+                }
+                return null;
+            });
+            
+            if (feature) {
+                const props = feature.getProperties();
+                const tooltipText = `
+                    <div style="text-align: left;">
+                        <strong style="font-size: 14px;">FIR: ${props.identifier || 'N/A'}</strong><br>
+                        <span style="color: #ffcc00;">${props.name || 'N/A'}</span><br>
+                        <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
+                        <strong>Country:</strong> ${props.country || 'N/A'}<br>
+                        <strong>Frequency:</strong> ${props.frequency || 'N/A'}<br>
+                        <strong>Altitude:</strong> ${props.lower_limit || '0'}-${props.upper_limit || '99999'} ft<br>
+                        <strong>ICAO Region:</strong> ${props.icao_region || 'N/A'}<br>
+                        <strong>Area:</strong> ${props.area_km2 ? props.area_km2.toLocaleString() + ' km²' : 'N/A'}
+                    </div>
+                    <div class="tooltip-arrow"></div>
+                `;
+                firTooltipElement.innerHTML = tooltipText;
+                firTooltipOverlay.setPosition(event.coordinate);
+                map.getTarget().style.cursor = 'pointer';
+                return;
+            }
+            
+            // Check Waypoints and Airports
+            feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+                if (layer === waypointLayer || layer === airportLayer) {
+                    return feature;
+                }
+                return null;
+            });
+            
+            if (feature) {
+                const props = feature.getProperties();
+                let tooltipText = '';
+                
+                // Check if it's an airport (has iata code)
+                if (props.iata) {
+                    tooltipText = `
+                        <div style="text-align: left;">
+                            <strong style="font-size: 14px; color: #1a73e8;">✈ ${props.name || props.identifier || 'Airport'}</strong><br>
+                            <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
+                            <strong>IATA:</strong> ${props.iata || 'N/A'}<br>
+                            <strong>ICAO:</strong> ${props.icao || 'N/A'}<br>
+                            <strong>City:</strong> ${props.city || 'N/A'}<br>
+                            <strong>Country:</strong> ${props.country || 'N/A'}
+                        </div>
+                        <div class="tooltip-arrow"></div>
+                    `;
+                } 
+                // Check if it's a waypoint (has identifier)
+                else if (props.identifier) {
+                    const type = props.type || 'WAYPOINT';
+                    const frequency = props.frequency ? `${props.frequency} MHz` : 'N/A';
+                    const elevation = props.elevation ? `${props.elevation} ft` : 'N/A';
+                    
+                    let typeIcon = '';
+                    switch(type.toUpperCase()) {
+                        case 'VOR': typeIcon = '🎯 VOR/DME'; break;
+                        case 'NDB': typeIcon = '📻 NDB'; break;
+                        case 'AIRPORT': typeIcon = '✈ AIRPORT'; break;
+                        case 'FIX': typeIcon = '📍 FIX'; break;
+                        default: typeIcon = '📍 ' + type;
+                    }
+                    
+                    tooltipText = `
+                        <div style="text-align: left;">
+                            <strong style="font-size: 14px; color: #FF6B35;">${typeIcon}</strong><br>
+                            <strong>${props.identifier}</strong> - ${props.name || 'Unnamed Waypoint'}<br>
+                            <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
+                            <strong>Type:</strong> ${type}<br>
+                            ${frequency !== 'N/A' ? `<strong>Frequency:</strong> ${frequency}<br>` : ''}
+                            ${elevation !== 'N/A' ? `<strong>Elevation:</strong> ${elevation}<br>` : ''}
+                            <strong>Country:</strong> ${props.country || 'N/A'}<br>
+                            ${props.magnetic_variation ? `<strong>Magnetic Var:</strong> ${props.magnetic_variation}°<br>` : ''}
+                        </div>
+                        <div class="tooltip-arrow"></div>
+                    `;
+                }
+                
+                if (tooltipText) {
+                    wpTooltipElement.innerHTML = tooltipText;
+                    wpTooltipOverlay.setPosition(event.coordinate);
+                    map.getTarget().style.cursor = 'pointer';
+                }
+            }
+        });
+
+        map.on('pointerleave', function() {
+            firTooltipOverlay.setPosition(undefined);
+            wpTooltipOverlay.setPosition(undefined);
+        });
+
+        // ==================== MAP CONTROLS ====================
+        document.getElementById('zoomIn').addEventListener('click', function() {
+            const view = map.getView();
+            view.animate({
+                zoom: view.getZoom() + 1,
+                duration: 250
+            });
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', function() {
+            const view = map.getView();
+            view.animate({
+                zoom: view.getZoom() - 1,
+                duration: 250
+            });
+        });
+
+        document.getElementById('resetView').addEventListener('click', function() {
+            map.getView().animate({
+                center: ol.proj.fromLonLat([51.3890, 35.6892]),
+                zoom: 5,
+                duration: 500
+            });
+        });
+
+        // ==================== TOOL SELECTION ====================
+        function removeAllInteractions() {
+            if (drawInteraction) {
+                map.removeInteraction(drawInteraction);
+                drawInteraction = null;
+            }
+            if (measureInteraction) {
+                map.removeInteraction(measureInteraction);
+                measureInteraction = null;
+            }
+            if (modifyInteraction) {
+                map.removeInteraction(modifyInteraction);
+                modifyInteraction = null;
+            }
+            if (snapInteraction) {
+                map.removeInteraction(snapInteraction);
+                snapInteraction = null;
+            }
+        }
+
+        function activateTool(toolName) {
+            removeAllInteractions();
+            currentTool = toolName;
+            
+            document.querySelectorAll('.control-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            const mapElement = document.getElementById('map');
+            mapElement.classList.remove('cursor-crosshair', 'cursor-grab', 'cursor-grabbing');
+            
+            // تنظیم active/inactive کردن DragPan بر اساس tool
+            map.getInteractions().forEach(interaction => {
+                if (interaction instanceof ol.interaction.DragPan) {
+                    interaction.setActive(toolName === 'pan');
+                }
+            });
+            
+            if (toolName === 'pan') {
+                document.getElementById('panTool').classList.add('active');
+                mapElement.classList.add('cursor-grab');
+                
+                mapElement.addEventListener('mousedown', function() {
+                    mapElement.classList.add('cursor-grabbing');
+                });
+                mapElement.addEventListener('mouseup', function() {
+                    mapElement.classList.remove('cursor-grabbing');
+                });
+                
+                showStatus('Pan tool activated - Drag to move map', 'info');
+                
+            } else if (toolName === 'select') {
+                document.getElementById('selectTool').classList.add('active');
+                
+            } else if (toolName === 'measure') {
+                activateMeasureTool();
+                document.getElementById('measureTool').classList.add('active');
+                mapElement.classList.add('cursor-crosshair');
+            }
+        }
+
+        document.getElementById('panTool').addEventListener('click', function() {
+            activateTool('pan');
+        });
+
+        document.getElementById('selectTool').addEventListener('click', function() {
+            activateTool('select');
+        });
+
+        document.getElementById('measureTool').addEventListener('click', function() {
+            activateTool('measure');
+        });
+
+        function activateMeasureTool() {
+            console.log('Activating measure tool...');
+            
+            // پاک کردن measure tool قبلی اگر هست
+            removeAllInteractions();
+            
+            const source = new ol.source.Vector();
+            const measureLayer = new ol.layer.Vector({
+                source: source,
+                style: function(feature) {
+                    const distance = feature.get('distance');
+                    const styles = [
+                        new ol.style.Style({
+                            stroke: new ol.style.Stroke({
+                                color: '#ff0000',
+                                width: 3,
+                                lineDash: [5, 5]
+                            })
+                        }),
+                        new ol.style.Style({
+                            image: new ol.style.Circle({
+                                radius: 6,
+                                fill: new ol.style.Fill({
+                                    color: '#ff0000'
+                                }),
+                                stroke: new ol.style.Stroke({
+                                    color: 'white',
+                                    width: 2
+                                })
+                            })
+                        })
+                    ];
+                    
+                    // نمایش مسافت روی خط
+                    if (distance) {
+                        const geometry = feature.getGeometry();
+                        const coordinates = geometry.getCoordinates();
+                        
+                        if (coordinates.length > 1) {
+                            // نقطه وسط خط رو پیدا کن
+                            const midIndex = Math.floor(coordinates.length / 2);
+                            const midPoint = coordinates[midIndex];
+                            
+                            styles.push(new ol.style.Style({
+                                text: new ol.style.Text({
+                                    text: distance.toFixed(1) + ' NM',
+                                    font: 'bold 14px Arial',
+                                    fill: new ol.style.Fill({
+                                        color: '#ff0000'
+                                    }),
+                                    stroke: new ol.style.Stroke({
+                                        color: 'white',
+                                        width: 3
+                                    }),
+                                    backgroundFill: new ol.style.Fill({
+                                        color: 'rgba(255, 255, 255, 0.8)'
+                                    }),
+                                    padding: [4, 6, 4, 6],
+                                    offsetY: -15
+                                }),
+                                geometry: new ol.geom.Point(midPoint)
+                            }));
+                        }
+                    }
+                    
+                    return styles;
+                }
+            });
+            
+            map.addLayer(measureLayer);
+            
+            drawInteraction = new ol.interaction.Draw({
+                source: source,
+                type: 'LineString',
+                style: new ol.style.Style({
+                    stroke: new ol.style.Stroke({
+                        color: 'rgba(255, 0, 0, 0.7)',
+                        width: 2,
+                        lineDash: [5, 5]
+                    }),
+                    image: new ol.style.Circle({
+                        radius: 5,
+                        fill: new ol.style.Fill({
+                            color: 'rgba(255, 0, 0, 0.7)'
+                        })
+                    })
+                })
+            });
+            
+            map.addInteraction(drawInteraction);
+            
+            let totalDistance = 0;
+            
+            drawInteraction.on('drawstart', function() {
+                totalDistance = 0;
+                console.log('Start measuring...');
+            });
+            
+            drawInteraction.on('drawend', function(evt) {
+                const feature = evt.feature;
+                const geometry = feature.getGeometry();
+                const coordinates = geometry.getCoordinates();
+                
+                // محاسبه کل مسافت
+                totalDistance = 0;
+                for (let i = 0; i < coordinates.length - 1; i++) {
+                    const coord1 = ol.proj.toLonLat(coordinates[i]);
+                    const coord2 = ol.proj.toLonLat(coordinates[i + 1]);
+                    totalDistance += calculateDistance(coord1, coord2);
+                }
+                
+                // ذخیره distance در feature
+                feature.set('distance', totalDistance);
+                
+                // آپدیت style
+                measureLayer.changed();
+                
+                // نمایش پیام
+                showStatus(`Measured distance: ${totalDistance.toFixed(1)} NM`, 'success');
+                
+                // پاک کردن بعد از ۴ ثانیه
+                setTimeout(function() {
+                    if (measureLayer) {
+                        map.removeLayer(measureLayer);
+                    }
+                    activateTool('select');
+                }, 4000);
+            });
+            
+            // تنظیم cursor
+            document.getElementById('map').classList.add('cursor-crosshair');
+        }
+
+        // ==================== PROFESSIONAL INTERNATIONAL TOOLTIP ====================
+        map.on('click', function(event) {
+            // Hide previous tooltips
+            if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
+            if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
+            
+            const pixel = event.pixel;
+            let feature = null;
+            let layerType = null;
+            
+            // Check all layers and identify type
+            map.forEachFeatureAtPixel(pixel, function(f, layer) {
+                feature = f;
+                if (layer === firLayer) {
+                    layerType = 'FIR';
+                } else if (layer === airportLayer) {
+                    layerType = 'AIRPORT';
+                } else if (layer === waypointLayer) {
+                    layerType = 'WAYPOINT';
+                } else if (layer === routeLayer) {
+                    layerType = 'ROUTE';
+                }
+                return f;
+            });
+            
+            if (feature && (wpTooltipOverlay || firTooltipOverlay)) {
+                const props = feature.getProperties();
+                
+                // ========== FIR TOOLTIP ==========
+                if (layerType === 'FIR') {
+                    const identifier = props.identifier || 'N/A';
+                    const name = props.name || 'Flight Information Region';
+                    
+                    let tooltipHTML = `
+                        <div style="padding: 12px; min-width: 240px; background: #ea4335; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
+                            <button onclick="document.querySelector('.fir-tooltip').style.display='none'" 
+                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
+                                ×
+                            </button>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <span style="font-size: 20px; margin-right: 10px;">🛂</span>
+                                <div>
+                                    <strong style="font-size: 16px; display: block;">${identifier} FIR</strong>
+                                    <span style="font-size: 12px; opacity: 0.9;">${name}</span>
+                                </div>
+                            </div>
+                    `;
+                    
+                    // FIR specific information
+                    tooltipHTML += `<div style="font-size: 12px; line-height: 1.5;">`;
+                    
+                    if (props.country) {
+                        tooltipHTML += `<div><strong>Country:</strong> ${props.country}</div>`;
+                    }
+                    
+                    if (props.country_code) {
+                        tooltipHTML += `<div><strong>Country Code:</strong> ${props.country_code}</div>`;
+                    }
+                    
+                    if (props.frequency) {
+                        tooltipHTML += `<div><strong>Frequency:</strong> ${props.frequency}</div>`;
+                    }
+                    
+                    if (props.emergency_frequency) {
+                        tooltipHTML += `<div><strong>Emergency Freq:</strong> ${props.emergency_frequency}</div>`;
+                    }
+                    
+                    // Altitude limits
+                    const lowerLimit = props.lower_limit || 0;
+                    const upperLimit = props.upper_limit || 99999;
+                    tooltipHTML += `<div><strong>Altitude Limits:</strong> ${lowerLimit} - ${upperLimit} ft</div>`;
+                    
+                    if (props.icao_region) {
+                        const regionMap = {
+                            'AS': 'Asia',
+                            'EU': 'Europe',
+                            'AF': 'Africa',
+                            'NA': 'North America',
+                            'SA': 'South America',
+                            'PA': 'Pacific',
+                            'ME': 'Middle East'
+                        };
+                        const regionName = regionMap[props.icao_region] || props.icao_region;
+                        tooltipHTML += `<div><strong>ICAO Region:</strong> ${regionName}</div>`;
+                    }
+                    
+                    // Coordinates
+                    const coords = ol.proj.toLonLat(event.coordinate);
+                    const lat = coords[1].toFixed(4);
+                    const lon = coords[0].toFixed(4);
+                    const latDir = lat >= 0 ? 'N' : 'S';
+                    const lonDir = lon >= 0 ? 'E' : 'W';
+                    
+                    tooltipHTML += `<hr style="margin: 10px 0; border: none; border-top: 1px solid rgba(255,255,255,0.3);">`;
+                    tooltipHTML += `<div style="font-size: 11px; font-family: 'Courier New', monospace;">
+                        <strong>Click Coordinates:</strong><br>
+                        ${Math.abs(lat)}°${latDir} ${Math.abs(lon)}°${lonDir}
+                    </div>`;
+                    
+                    // Area if available
+                    if (props.area_km2) {
+                        tooltipHTML += `<div style="margin-top: 5px; font-size: 11px;">
+                            <strong>Approx. Area:</strong> ${parseInt(props.area_km2).toLocaleString()} km²
+                        </div>`;
+                    }
+                    
+                    if (props.is_active !== undefined) {
+                        tooltipHTML += `<div><strong>Active:</strong> ${props.is_active ? '✅ Yes' : '❌ No'}</div>`;
+                    }
+                    
+                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
+                    
+                    firTooltipElement.innerHTML = tooltipHTML;
+                    firTooltipOverlay.setPosition(event.coordinate);
+                    
+                    // Auto-hide after 10 seconds (10000ms)
+                    setTimeout(() => {
+                        if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
+                    }, 10000);
+                }
+                
+                // ========== AIRPORT TOOLTIP ==========
+                else if (layerType === 'AIRPORT') {
+                    const name = props.name || 'No name available';
+                    const iata = props.iata || 'N/A';
+                    const icao = props.icao || 'N/A';
+                    const country = props.country || 'N/A';
+                    const city = props.city || 'N/A';
+                    
+                    // Determine FIR from coordinates
+                    let firCode = 'N/A';
+                    if (firLayer && firLayer.getVisible()) {
+                        const firSource = firLayer.getSource();
+                        const firFeatures = firSource.getFeatures();
+                        
+                        for (let firFeature of firFeatures) {
+                            const firGeometry = firFeature.getGeometry();
+                            if (firGeometry && firGeometry.intersectsCoordinate(event.coordinate)) {
+                                firCode = firFeature.get('identifier') || 'N/A';
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Build professional airport tooltip
+                    let tooltipHTML = `
+                        <div style="padding: 12px; min-width: 260px; background: #1a73e8; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
+                            <button onclick="document.querySelector('.wp-tooltip').style.display='none'" 
+                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
+                                ×
+                            </button>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <span style="font-size: 22px; margin-right: 12px;">✈</span>
+                                <div>
+                                    <strong style="font-size: 17px; display: block;">${name}</strong>
+                                    <span style="font-size: 12px; opacity: 0.9;">AIRPORT</span>
+                                </div>
+                            </div>
+                    `;
+                    
+                    // Main information
+                    tooltipHTML += `<div style="font-size: 13px; line-height: 1.6;">`;
+                    
+                    // Display both IATA and ICAO
+                    tooltipHTML += `<div style="margin-bottom: 5px;">
+                        <strong>IATA:</strong> <span style="font-family: 'Courier New', monospace; font-weight: bold;">${iata}</span> | 
+                        <strong>ICAO:</strong> <span style="font-family: 'Courier New', monospace; font-weight: bold;">${icao}</span>
+                    </div>`;
+                    
+                    // Location info
+                    if (city !== 'N/A') {
+                        tooltipHTML += `<div><strong>City:</strong> ${city}</div>`;
+                    }
+                    
+                    if (country !== 'N/A') {
+                        tooltipHTML += `<div><strong>Country:</strong> ${country}</div>`;
+                    }
+                    
+                    // FIR info
+                    if (firCode !== 'N/A') {
+                        tooltipHTML += `<div><strong>FIR:</strong> ${firCode}</div>`;
+                    }
+                    
+                    // Airport details
+                    if (props.elevation) {
+                        tooltipHTML += `<div><strong>Elevation:</strong> ${props.elevation} ft</div>`;
+                    }
+                    
+                    if (props.runway_length) {
+                        tooltipHTML += `<div><strong>Longest Runway:</strong> ${props.runway_length} m</div>`;
+                    }
+                    
+                    // Coordinates
+                    const coords = ol.proj.toLonLat(event.coordinate);
+                    const lat = coords[1].toFixed(4);
+                    const lon = coords[0].toFixed(4);
+                    const latDir = lat >= 0 ? 'N' : 'S';
+                    const lonDir = lon >= 0 ? 'E' : 'W';
+                    
+                    tooltipHTML += `<hr style="margin: 10px 0; border: none; border-top: 1px solid rgba(255,255,255,0.3);">`;
+                    tooltipHTML += `<div style="font-size: 12px; font-family: 'Courier New', monospace;">
+                        <strong>Coordinates:</strong><br>
+                        ${Math.abs(lat)}°${latDir} ${Math.abs(lon)}°${lonDir}
+                    </div>`;
+                    
+                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
+                    
+                    // Display tooltip
+                    wpTooltipElement.innerHTML = tooltipHTML;
+                    wpTooltipOverlay.setPosition(event.coordinate);
+                    
+                    // Auto-hide after 10 seconds
+                    setTimeout(() => {
+                        if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
+                    }, 10000);
+                }
+                
+                // ========== WAYPOINT TOOLTIP ==========
+                else if (layerType === 'WAYPOINT') {
+                    const identifier = props.identifier || 'N/A';
+                    const name = props.name || 'No name available';
+                    const type = props.type || 'WAYPOINT';
+                    const country = props.country || 'N/A';
+                    
+                    // Determine FIR from coordinates
+                    let firCode = 'N/A';
+                    if (firLayer && firLayer.getVisible()) {
+                        const firSource = firLayer.getSource();
+                        const firFeatures = firSource.getFeatures();
+                        
+                        for (let firFeature of firFeatures) {
+                            const firGeometry = firFeature.getGeometry();
+                            if (firGeometry && firGeometry.intersectsCoordinate(event.coordinate)) {
+                                firCode = firFeature.get('identifier') || 'N/A';
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Determine color and icon based on type
+                    let icon = '📍';
+                    let color = '#1a73e8';
+                    let typeDisplay = type;
+                    
+                    switch(type.toUpperCase()) {
+                        case 'VOR':
+                            icon = '📡';
+                            color = '#FF6B35';
+                            typeDisplay = 'VOR/DME';
+                            break;
+                        case 'NDB':
+                            icon = '📻';
+                            color = '#34a853';
+                            typeDisplay = 'NDB';
+                            break;
+                        case 'DME':
+                            icon = '📡';
+                            color = '#9C27B0';
+                            typeDisplay = 'DME';
+                            break;
+                        case 'TACAN':
+                            icon = '🛰️';
+                            color = '#FF9800';
+                            typeDisplay = 'TACAN';
+                            break;
+                        case 'FIX':
+                            icon = '📍';
+                            color = '#5f6368';
+                            typeDisplay = 'FIX';
+                            break;
+                        case 'VORTAC':
+                            icon = '📡';
+                            color = '#E91E63';
+                            typeDisplay = 'VORTAC';
+                            break;
+                        case 'IAF':
+                            icon = '📍';
+                            color = '#2196F3';
+                            typeDisplay = 'Initial Approach Fix';
+                            break;
+                        case 'FAF':
+                            icon = '📍';
+                            color = '#4CAF50';
+                            typeDisplay = 'Final Approach Fix';
+                            break;
+                        case 'RNAV':
+                            icon = '📍';
+                            color = '#9C27B0';
+                            typeDisplay = 'RNAV Waypoint';
+                            break;
+                    }
+                    
+                    // Build waypoint tooltip
+                    let tooltipHTML = `
+                        <div style="padding: 12px; min-width: 240px; background: ${color}; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
+                            <button onclick="document.querySelector('.wp-tooltip').style.display='none'" 
+                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
+                                ×
+                            </button>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <span style="font-size: 22px; margin-right: 12px;">${icon}</span>
+                                <div>
+                                    <strong style="font-size: 17px; display: block; font-family: 'Courier New', monospace;">${identifier}</strong>
+                                    <span style="font-size: 12px; opacity: 0.9;">${typeDisplay}</span>
+                                </div>
+                            </div>
+                    `;
+                    
+                    // Main information
+                    tooltipHTML += `<div style="font-size: 13px; line-height: 1.6;">`;
+                    
+                    if (name && name !== 'No name available') {
+                        tooltipHTML += `<div><strong>Name:</strong> ${name}</div>`;
+                    }
+                    
+                    if (country !== 'N/A') {
+                        tooltipHTML += `<div><strong>Country:</strong> ${country}</div>`;
+                    }
+                    
+                    // FIR info
+                    if (firCode !== 'N/A') {
+                        tooltipHTML += `<div><strong>FIR:</strong> ${firCode}</div>`;
+                    }
+                    
+                    // Technical details
+                    if (props.frequency) {
+                        tooltipHTML += `<div><strong>Frequency:</strong> ${props.frequency} MHz</div>`;
+                    }
+                    
+                    if (props.elevation) {
+                        tooltipHTML += `<div><strong>Elevation:</strong> ${props.elevation} ft</div>`;
+                    }
+                    
+                    if (props.magnetic_variation) {
+                        const magVar = parseFloat(props.magnetic_variation);
+                        const direction = magVar >= 0 ? 'E' : 'W';
+                        tooltipHTML += `<div><strong>Magnetic Variation:</strong> ${Math.abs(magVar)}°${direction}</div>`;
+                    }
+                    
+                    // Coordinates
+                    const coords = ol.proj.toLonLat(event.coordinate);
+                    const lat = coords[1].toFixed(4);
+                    const lon = coords[0].toFixed(4);
+                    const latDir = lat >= 0 ? 'N' : 'S';
+                    const lonDir = lon >= 0 ? 'E' : 'W';
+                    
+                    tooltipHTML += `<hr style="margin: 10px 0; border: none; border-top: 1px solid rgba(255,255,255,0.3);">`;
+                    tooltipHTML += `<div style="font-size: 12px; font-family: 'Courier New', monospace;">
+                        <strong>Coordinates:</strong><br>
+                        ${Math.abs(lat)}°${latDir} ${Math.abs(lon)}°${lonDir}
+                    </div>`;
+                    
+                    // Source info
+                    if (props.source) {
+                        tooltipHTML += `<div style="margin-top: 5px; font-size: 11px; opacity: 0.8;">
+                            <strong>Source:</strong> ${props.source}
+                        </div>`;
+                    }
+                    
+                    if (props.is_active !== undefined) {
+                        tooltipHTML += `<div><strong>Active:</strong> ${props.is_active ? '✅ Yes' : '❌ No'}</div>`;
+                    }
+                    
+                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
+                    
+                    // Display tooltip
+                    wpTooltipElement.innerHTML = tooltipHTML;
+                    wpTooltipOverlay.setPosition(event.coordinate);
+                    
+                    // Auto-hide after 10 seconds
+                    setTimeout(() => {
+                        if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
+                    }, 10000);
+                }
+                
+                // ========== ROUTE TOOLTIP ==========
+                else if (layerType === 'ROUTE') {
+                    const departure = props.departure || 'N/A';
+                    const arrival = props.arrival || 'N/A';
+                    
+                    let tooltipHTML = `
+                        <div style="padding: 12px; min-width: 200px; background: #1a73e8; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
+                            <button onclick="document.querySelector('.wp-tooltip').style.display='none'" 
+                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
+                                ×
+                            </button>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <span style="font-size: 20px; margin-right: 10px;">🛣️</span>
+                                <div>
+                                    <strong style="font-size: 16px; display: block;">${departure} → ${arrival}</strong>
+                                    <span style="font-size: 11px; opacity: 0.9;">ROUTE</span>
+                                </div>
+                            </div>
+                    `;
+                    
+                    // Route information
+                    tooltipHTML += `<div style="font-size: 12px; line-height: 1.5;">`;
+                    tooltipHTML += `<div><strong>Type:</strong> Flight Route</div>`;
+                    
+                    if (props.total_distance) {
+                        tooltipHTML += `<div><strong>Distance:</strong> ${props.total_distance} NM</div>`;
+                    }
+                    
+                    if (props.waypoints && Array.isArray(props.waypoints)) {
+                        tooltipHTML += `<div><strong>Waypoints:</strong> ${props.waypoints.length}</div>`;
+                    }
+                    
+                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
+                    
+                    wpTooltipElement.innerHTML = tooltipHTML;
+                    wpTooltipOverlay.setPosition(event.coordinate);
+                    
+                    // Auto-hide after 10 seconds
+                    setTimeout(() => {
+                        if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
+                    }, 10000);
+                }
+            }
+        });
+
+        // Hide tooltip when clicking empty map
+        map.on('singleclick', function(event) {
+            const pixel = event.pixel;
+            const feature = map.forEachFeatureAtPixel(pixel, function(f) {
+                return f;
+            });
+            
+            if (!feature) {
+                if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
+                if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
+            }
+        });
+
+        // ESC key to close tooltip
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
+                if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
+                closeRouteSearchModal();
+            }
+        });
+
+        // ==================== EDIT TOOLS ====================
+        function enableRouteEditing() {
+            const routeSource = routeLayer.getSource();
+            const routeFeatures = routeSource.getFeatures();
+            
+            if (routeFeatures.length === 0) {
+                document.getElementById('snapInfo').innerHTML = 'Please create a route first using "Show Route"';
+                document.getElementById('snapInfo').className = 'status-message status-error';
+                return;
+            }
+            
+            removeAllInteractions();
+            
+            // Create modify interaction
+            modifyInteraction = new ol.interaction.Modify({
+                source: routeLayer.getSource(),
+                style: new ol.style.Style({
+                    image: new ol.style.Circle({
+                        radius: 8,
+                        fill: new ol.style.Fill({color: '#ea4335'}),
+                        stroke: new ol.style.Stroke({color: 'white', width: 2})
+                    })
+                }),
+                condition: function(event) {
+                    // Only allow modification when not panning
+                    return ol.events.condition.primaryAction(event) && 
+                           ol.events.condition.noModifierKeys(event) &&
+                           !ol.events.condition.singleClick(event);
+                }
+            });
+
+            // Create snap interaction
+            snapInteraction = new ol.interaction.Snap({
+                source: waypointLayer.getSource(),
+                pixelTolerance: 10
+            });
+
+            map.addInteraction(modifyInteraction);
+            map.addInteraction(snapInteraction);
+            
+            isEditingEnabled = true;
+            currentTool = 'edit';
+            routeFeature = routeFeatures[0];
+            
+            document.getElementById('enableEdit').style.display = 'none';
+            document.getElementById('disableEdit').style.display = 'inline-flex';
+            
+            document.getElementById('editInstruction').innerHTML = 
+                'Drag the red vertices to modify the route. Route will snap to waypoints.';
+            document.getElementById('snapInfo').innerHTML = 'Route editing enabled. Drag vertices to modify.';
+            document.getElementById('snapInfo').className = 'status-message status-success';
+            
+            showStatus('Route editing enabled - Drag vertices to modify', 'success');
+        }
+
+        function disableRouteEditing() {
+            removeAllInteractions();
+            isEditingEnabled = false;
+            activateTool('select');
+            
+            document.getElementById('enableEdit').style.display = 'inline-flex';
+            document.getElementById('disableEdit').style.display = 'none';
+            
+            document.getElementById('editInstruction').innerHTML = 'Click "Enable Editing" to modify the route';
+            document.getElementById('snapInfo').innerHTML = 'Route editing disabled';
+            document.getElementById('snapInfo').className = 'status-message status-info';
+            
+            showStatus('Route editing disabled', 'info');
+        }
+
+        // ==================== SAVE ROUTE TO DATABASE ====================
+        document.getElementById('saveRoute').addEventListener('click', function() {
+            if (!routeFeature) {
+                showStatus('No route to save', 'error');
+                return;
+            }
+
+            const geometry = routeFeature.getGeometry();
+            const coordinates = geometry.getCoordinates();
+            const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
+            
+            // Extract distance from route info
+            const routeDetails = document.getElementById('routeDetails').innerHTML;
+            const distanceMatch = routeDetails.match(/Total Distance:\s*([0-9.]+)/);
+            const totalDistance = distanceMatch ? parseFloat(distanceMatch[1]) : 0;
+            
+            const routeData = {
+                name: `Route ${$('#departureSelect').val()} to ${$('#arrivalSelect').val()}`,
+                departure: $('#departureSelect').val(),
+                arrival: $('#arrivalSelect').val(),
+                waypoints: [],
+                coordinates: lonLatCoordinates,
+                total_distance: totalDistance,
+                cruise_altitude: 35000
+            };
+
+            console.log('Saving route:', routeData);
+
+            fetch('/api/save-route/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(routeData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Save response:', data);
+                if (data.status === 'success') {
+                    showStatus(`Route saved successfully! ID: ${data.route_id}`, 'success');
+                    loadSavedRoutes();
+                } else {
+                    showStatus('Error saving route: ' + (data.message || 'Unknown error'), 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Save error:', error);
+                showStatus('Error saving route: ' + error, 'error');
+            });
+        });
+
+        // ==================== LOAD SAVED ROUTES ====================
+        function loadSavedRoutes() {
+            console.log('Loading saved routes...');
+            
+            fetch('/api/get-routes/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Routes response:', data);
+                    if (data.status === 'success') {
+                        displayRoutesList(data.routes);
+                        showStatus(`Loaded ${data.routes.length} saved routes`, 'success');
+                    } else {
+                        showStatus('Error loading routes: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Load routes error:', error);
+                    showStatus('Error loading routes: ' + error, 'error');
+                });
+        }
+
+        function displayRoutesList(routes) {
+            const routesList = document.getElementById('routesList');
+            
+            if (!routes || routes.length === 0) {
+                routesList.innerHTML = '<p style="color: var(--text-light); font-size: 14px; text-align: center; padding: 20px;">No saved routes yet</p>';
+                return;
+            }
+            
+            let html = '';
+            routes.forEach(route => {
+                const hasCoordinates = route.coordinates && Array.isArray(route.coordinates);
+                
+                html += `
+                    <div class="route-item">
+                        <div class="route-item-header">
+                            <strong>${route.name || `Route ${route.departure} to ${route.arrival}`}</strong>
+                            <div class="route-item-actions">
+                                <button class="action-btn btn-primary" onclick="loadRouteFromList(${route.id})">
+                                    <i class="fas fa-eye"></i> Load
+                                </button>
+                                <button class="action-btn btn-danger" onclick="deleteRoute(${route.id})">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-light);">
+                            <div><strong>From:</strong> ${route.departure} <strong>To:</strong> ${route.arrival}</div>
+                            <div><strong>Distance:</strong> ${route.total_distance} NM</div>
+                            <div><strong>Created:</strong> ${route.created_at} by ${route.created_by || 'Unknown'}</div>
+                            <div><strong>Coordinates:</strong> ${hasCoordinates ? 'Available' : 'Not available'}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            routesList.innerHTML = html;
+        }
+
+        // Global function for loading routes from list
+        window.loadRouteFromList = function(routeId) {
+            console.log('Loading route:', routeId);
+            
+            fetch('/api/get-routes/')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const route = data.routes.find(r => r.id === routeId);
+                        if (route) {
+                            routeLayer.getSource().clear();
+                            
+                            if (!route.coordinates || !Array.isArray(route.coordinates)) {
+                                showStatus('Error: Route has no valid coordinates data', 'error');
+                                return;
+                            }
+                            
+                            let coordinatesData = route.coordinates;
+                            if (typeof coordinatesData === 'string') {
+                                try {
+                                    coordinatesData = JSON.parse(coordinatesData);
+                                } catch (e) {
+                                    console.error('Failed to parse coordinates:', e);
+                                    showStatus('Error: Invalid coordinates format', 'error');
+                                    return;
+                                }
+                            }
+                            
+                            if (!Array.isArray(coordinatesData)) {
+                                showStatus('Error: Coordinates is not an array', 'error');
+                                return;
+                            }
+                            
+                            const coordinates = coordinatesData.map(coord => {
+                                if (Array.isArray(coord) && coord.length >= 2) {
+                                    return ol.proj.fromLonLat([coord[0], coord[1]]);
+                                }
+                                return ol.proj.fromLonLat([0, 0]);
+                            }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
+                            
+                            if (coordinates.length < 2) {
+                                showStatus('Error: Route has insufficient valid coordinates', 'error');
+                                return;
+                            }
+                            
+                            routeFeature = new ol.Feature({
+                                geometry: new ol.geom.LineString(coordinates),
+                                properties: {
+                                    departure: route.departure,
+                                    arrival: route.arrival
+                                }
+                            });
+                            
+                            routeLayer.getSource().addFeature(routeFeature);
+                            routeLayer.setVisible(true);
+                            document.getElementById('toggleRoute').checked = true;
+                            sessionStorage.setItem('toggleRoute', 'true');
+                            
+                            updateRouteInfo();
+                            document.getElementById('routeInfo').classList.add('active');
+                            
+                            $('#departureSelect').val(route.departure).trigger('change');
+                            $('#arrivalSelect').val(route.arrival).trigger('change');
+                            
+                            showStatus(`Route "${route.name || 'Unnamed'}" loaded successfully`, 'success');
+                        } else {
+                            showStatus('Route not found', 'error');
+                        }
+                    } else {
+                        showStatus('Error loading routes: ' + data.message, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('Load route error:', error);
+                    showStatus('Error loading route: ' + error, 'error');
+                });
+        };
+
+        function deleteRoute(routeId) {
+            if (!confirm('Are you sure you want to delete this route?')) {
+                return;
+            }
+            
+            fetch(`/api/delete-route/${routeId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showStatus('Route deleted successfully', 'success');
+                    loadSavedRoutes();
+                } else {
+                    showStatus('Error deleting route: ' + data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Delete error:', error);
+                showStatus('Error deleting route: ' + error, 'error');
+            });
+        }
+
+        // ==================== SEARCH FUNCTION ====================
+        document.getElementById('searchButton').addEventListener('click', function() {
+            const searchTerm = document.getElementById('globalSearch').value.trim();
+            if (!searchTerm) {
+                showStatus('Please enter a search term', 'error');
+                return;
+            }
+            
+            showStatus(`Searching for: ${searchTerm}...`, 'info');
+            
+            // 1. اول airports رو سرچ کن
+            fetch('/api/airports/')
+                .then(response => response.json())
+                .then(data => {
+                    const airportResults = data.features.filter(airport => 
+                        airport.properties.iata.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        airport.properties.icao.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        airport.properties.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        airport.properties.city.toLowerCase().includes(searchTerm.toLowerCase())
+                    );
+                    
+                    if (airportResults.length > 0) {
+                        const result = airportResults[0];
+                        const coordinates = result.geometry.coordinates;
+                        
+                        map.getView().animate({
+                            center: ol.proj.fromLonLat(coordinates),
+                            zoom: 10,
+                            duration: 1000
+                        });
+                        
+                        // روشن کردن لایه waypoints همزمان
+                        waypointLayer.setVisible(true);
+                        document.getElementById('toggleWaypoints').checked = true;
+                        sessionStorage.setItem('toggleWaypoints', 'true');
+                        
+                        showStatus(`Found Airport: ${result.properties.name} (${result.properties.iata}) - Waypoints layer ON`, 'success');
+                        return Promise.reject('AIRPORT_FOUND');
+                    }
+                    
+                    // 2. اگر airport پیدا نشد، FIRها رو سرچ کن
+                    return fetch('/api/fir-geojson/');
+                })
+                .then(response => {
+                    if (!response) return; // اگر قبلاً airport پیدا شده بود
+                    
+                    return response.json().then(firData => {
+                        if (!firData || !firData.features) {
+                            showStatus('FIR data not available', 'error');
+                            return;
+                        }
+                        
+                        const firResults = firData.features.filter(fir => {
+                            if (!fir.properties) return false;
+                            const props = fir.properties;
+                            const searchLower = searchTerm.toLowerCase();
+                            
+                            return (
+                                (props.identifier && props.identifier.toLowerCase().includes(searchLower)) ||
+                                (props.name && props.name.toLowerCase().includes(searchLower)) ||
+                                (props.country && props.country.toLowerCase().includes(searchLower)) ||
+                                (props.country_code && props.country_code.toLowerCase().includes(searchLower))
+                            );
+                        });
+                        
+                        if (firResults.length > 0) {
+                            const result = firResults[0];
+                            console.log('Found FIR:', result.properties.identifier);
+                            
+                            // ========== محاسبه Extent (محدوده) FIR ==========
+                            try {
+                                if (result.geometry && result.geometry.coordinates) {
+                                    const extent = calculateFIRExtent(result.geometry);
+                                    
+                                    if (extent && extent.length === 4) {
+                                        console.log('FIR Extent calculated:', extent);
+                                        
+                                        // تبدیل extent به مختصات OpenLayers
+                                        const minLon = extent[0];
+                                        const minLat = extent[1];
+                                        const maxLon = extent[2];
+                                        const maxLat = extent[3];
+                                        
+                                        const olExtent = [
+                                            ol.proj.fromLonLat([minLon, minLat]),
+                                            ol.proj.fromLonLat([maxLon, maxLat])
+                                        ].flat();
+                                        
+                                        // زوم کردن به کل محدوده FIR با padding
+                                        map.getView().fit(olExtent, {
+                                            padding: [50, 50, 50, 50], // padding از همه طرف
+                                            duration: 1000,
+                                            maxZoom: 8 // حداکثر زوم برای FIRها
+                                        });
+                                        
+                                        // ========== روشن کردن هر دو لایه ==========
+                                        // لایه FIR
+                                        firLayer.setVisible(true);
+                                        document.getElementById('toggleFIR').checked = true;
+                                        sessionStorage.setItem('toggleFIR', 'true');
+                                        
+                                        // لایه Waypoints
+                                        waypointLayer.setVisible(true);
+                                        document.getElementById('toggleWaypoints').checked = true;
+                                        sessionStorage.setItem('toggleWaypoints', 'true');
+                                        
+                                        // ========== Highlight کردن FIR پیدا شده ==========
+                                        highlightFIR(result.properties.identifier);
+                                        
+                                        showStatus(`Found FIR: ${result.properties.identifier} - ${result.properties.name} (Both layers ON)`, 'success');
+                                        return Promise.reject('FIR_FOUND');
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Error calculating FIR extent:', e);
+                            }
+                            
+                            // اگر نتوانستیم extent رو محاسبه کنیم، به مرکز تهران زوم کن
+                            map.getView().animate({
+                                center: ol.proj.fromLonLat([51.3890, 35.6892]),
+                                zoom: 6,
+                                duration: 1000
+                            });
+                            
+                            // باز هم لایه‌ها رو روشن کن
+                            firLayer.setVisible(true);
+                            document.getElementById('toggleFIR').checked = true;
+                            sessionStorage.setItem('toggleFIR', 'true');
+                            
+                            waypointLayer.setVisible(true);
+                            document.getElementById('toggleWaypoints').checked = true;
+                            sessionStorage.setItem('toggleWaypoints', 'true');
+                            
+                            highlightFIR(result.properties.identifier);
+                            
+                            showStatus(`Found FIR: ${result.properties.identifier} (Using default view)`, 'success');
+                            return Promise.reject('FIR_FOUND');
+                        }
+                        
+                        // 3. اگر FIR هم پیدا نشد، waypoints رو سرچ کن
+                        return fetch('/api/waypoints/');
+                    });
+                })
+                .then(response => {
+                    if (!response) return; // قبلاً نتیجه پیدا شده
+                    
+                    return response.json().then(data => {
+                        if (!data || !data.features) {
+                            showStatus('Waypoint data not available', 'error');
+                            return;
+                        }
+                        
+                        const waypointResults = data.features.filter(waypoint => {
+                            if (!waypoint.properties) return false;
+                            const props = waypoint.properties;
+                            return (
+                                (props.identifier && props.identifier.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                                (props.name && props.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                            );
+                        });
+                        
+                        if (waypointResults.length > 0) {
+                            const result = waypointResults[0];
+                            const coordinates = result.geometry.coordinates;
+                            
+                            map.getView().animate({
+                                center: ol.proj.fromLonLat(coordinates),
+                                zoom: 9,
+                                duration: 1000
+                            });
+                            
+                            // روشن کردن لایه waypoints
+                            waypointLayer.setVisible(true);
+                            document.getElementById('toggleWaypoints').checked = true;
+                            sessionStorage.setItem('toggleWaypoints', 'true');
+                            
+                            showStatus(`Found Waypoint: ${result.properties.identifier} (${result.properties.type})`, 'success');
+                            return;
+                        }
+                        
+                        // اگر هیچ چیز پیدا نشد
+                        showStatus('No results found for: ' + searchTerm, 'error');
+                    });
+                })
+                .catch(error => {
+                    if (error === 'AIRPORT_FOUND' || error === 'FIR_FOUND') {
+                        // این error نیست، فقط برای کنترل flow هست
+                        return;
+                    }
+                    console.error('Search error:', error);
+                    showStatus('Search error: ' + error, 'error');
+                });
+        });
+
+        // ========== تابع کمکی برای محاسبه Extent FIR ==========
+        function calculateFIRExtent(geometry) {
+            if (!geometry || !geometry.coordinates) return null;
+            
+            let minLon = 180;
+            let maxLon = -180;
+            let minLat = 90;
+            let maxLat = -90;
+            
+            try {
+                const processCoordinates = (coords) => {
+                    if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+                        // چندضلعی یا چندخطی
+                        coords.forEach(ring => processCoordinates(ring));
+                    } else if (Array.isArray(coords[0])) {
+                        // خط
+                        coords.forEach(coord => processCoordinates(coord));
+                    } else if (coords.length >= 2) {
+                        // نقطه
+                        const lon = coords[0];
+                        const lat = coords[1];
+                        
+                        if (lon < minLon) minLon = lon;
+                        if (lon > maxLon) maxLon = lon;
+                        if (lat < minLat) minLat = lat;
+                        if (lat > maxLat) maxLat = lat;
+                    }
+                };
+                
+                processCoordinates(geometry.coordinates);
+                
+                // اضافه کردن margin کوچک
+                const margin = 0.5; // درجه
+                return [
+                    minLon - margin,
+                    minLat - margin,
+                    maxLon + margin,
+                    maxLat + margin
+                ];
+                
+            } catch (e) {
+                console.error('Error in calculateFIRExtent:', e);
+                return null;
+            }
+        }
+
+        // ========== تابع کمکی برای Highlight کردن FIR ==========
+        function highlightFIR(firIdentifier) {
+            const source = firLayer.getSource();
+            const features = source.getFeatures();
+            
+            // اول همه رو به style اصلی برگردون
+            features.forEach(feature => {
+                const type = feature.getGeometry().getType();
+                
+                if (type === 'Polygon' || type === 'MultiPolygon') {
+                    feature.setStyle(new ol.style.Style({
+                        stroke: new ol.style.Stroke({
+                            color: 'rgba(234, 67, 53, 0.7)',
+                            width: 2,
+                            lineDash: [5, 5]
+                        }),
+                        fill: new ol.style.Fill({
+                            color: 'rgba(234, 67, 53, 0.1)'
+                        }),
+                        text: new ol.style.Text({
+                            text: feature.get('identifier'),
+                            fill: new ol.style.Fill({color: '#ea4335'}),
+                            stroke: new ol.style.Stroke({color: 'white', width: 2}),
+                            offsetY: -20,
+                            font: 'bold 12px Arial',
+                            overflow: true
+                        })
+                    }));
+                }
+            });
+            
+            // حالا FIR پیدا شده رو highlight کن
+            features.forEach(feature => {
+                if (feature.get('identifier') === firIdentifier) {
+                    feature.setStyle(new ol.style.Style({
+                        stroke: new ol.style.Stroke({
+                            color: '#ff0000',
+                            width: 3,
+                            lineDash: [5, 5]
+                        }),
+                        fill: new ol.style.Fill({
+                            color: 'rgba(255, 0, 0, 0.2)'
+                        }),
+                        text: new ol.style.Text({
+                            text: feature.get('identifier') + ' ★',
+                            fill: new ol.style.Fill({color: '#ff0000'}),
+                            stroke: new ol.style.Stroke({color: 'white', width: 3}),
+                            offsetY: -20,
+                            font: 'bold 13px Arial',
+                            overflow: true
+                        })
+                    }));
+                }
+            });
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        document.getElementById('viewMode').addEventListener('click', function() {
+            document.getElementById('viewMode').classList.add('active');
+            document.getElementById('editMode').classList.remove('active');
+            document.getElementById('editTools').classList.remove('active');
+            disableRouteEditing();
+            activateTool('select');
+            showStatus('View mode activated', 'info');
+        });
+
+        document.getElementById('editMode').addEventListener('click', function() {
+            document.getElementById('editMode').classList.add('active');
+            document.getElementById('viewMode').classList.remove('active');
+            document.getElementById('editTools').classList.add('active');
+            activateTool('select');
+            showStatus('Edit mode activated', 'info');
+        });
+
+        document.getElementById('enableEdit').addEventListener('click', enableRouteEditing);
+        document.getElementById('disableEdit').addEventListener('click', disableRouteEditing);
+
+        document.getElementById('showDirectRoute').addEventListener('click', function() {
+            const departure = $('#departureSelect').val();
+            const arrival = $('#arrivalSelect').val();
+            
+            if (departure && arrival) {
+                showDirectRoute(departure, arrival);
+            } else {
+                showStatus('Please select both departure and arrival airports', 'error');
+            }
+        });
+
+        document.getElementById('clearRoute').addEventListener('click', function() {
+            routeLayer.getSource().clear();
+            routeFeature = null;
+            routeLayer.setVisible(false);
+            document.getElementById('toggleRoute').checked = false;
+            sessionStorage.setItem('toggleRoute', 'false');
+            
+            document.getElementById('routeInfo').classList.remove('active');
+            document.getElementById('snapInfo').innerHTML = '';
+            
+            disableRouteEditing();
+            showStatus('Route cleared', 'info');
+        });
+
+        document.getElementById('loadRoutes').addEventListener('click', loadSavedRoutes);
+
+        // ==================== ROUTE SEARCH EVENT LISTENERS ====================
+        document.getElementById('routeSearchBtn').addEventListener('click', openRouteSearchModal);
+        document.getElementById('closeRouteSearchModal').addEventListener('click', closeRouteSearchModal);
+        document.getElementById('swapSearchInputs').addEventListener('click', swapSearchInputs);
+        document.getElementById('executeRouteSearch').addEventListener('click', executeRouteSearch);
+
+        // Enter key to submit search
+        document.getElementById('searchOrigin').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('executeRouteSearch').click();
+            }
+        });
+
+        document.getElementById('searchDestination').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('executeRouteSearch').click();
+            }
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('routeSearchModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeRouteSearchModal();
+            }
+        });
+
+        // ==================== LAYER CONTROLS ====================
+        function initLayerControls() {
+            const layerMap = {
+                'toggleAirports': airportLayer,
+                'toggleWaypoints': waypointLayer,
+                'toggleFIR': firLayer,
+                'toggleRoute': routeLayer
+            };
+
+            Object.keys(layerMap).forEach(checkboxId => {
+                const checkbox = document.getElementById(checkboxId);
+                const layer = layerMap[checkboxId];
+                
+                const savedState = sessionStorage.getItem(checkboxId);
+                
+                if (savedState !== null) {
+                    const isVisible = savedState === 'true';
+                    checkbox.checked = isVisible;
+                    layer.setVisible(isVisible);
+                } else {
+                    checkbox.checked = false;
+                    layer.setVisible(false);
+                    sessionStorage.setItem(checkboxId, 'false');
+                }
+
+                checkbox.addEventListener('change', function() {
+                    const isChecked = this.checked;
+                    layer.setVisible(isChecked);
+                    sessionStorage.setItem(checkboxId, isChecked.toString());
+                });
+            });
+        }
+
+        // ==================== RESIZABLE SIDEBAR ====================
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebar = document.getElementById('sidebar');
+            const resizeHandle = document.getElementById('resizeHandle');
+            const mapContainer = document.querySelector('.map-container');
+            
+            // ایجاد دکمه collapse
+            const collapseBtn = document.createElement('div');
+            collapseBtn.className = 'collapse-btn';
+            collapseBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+            sidebar.appendChild(collapseBtn);
+            
+            // وضعیت اولیه
+            let isResizing = false;
+            let startX, startWidth;
+            
+            // ===== RESIZE FUNCTIONALITY =====
+            function initResize(e) {
+                isResizing = true;
+                startX = e.clientX;
+                startWidth = parseInt(document.defaultView.getComputedStyle(sidebar).width, 10);
+                sidebar.classList.add('resizing');
+                resizeHandle.classList.add('resizing');
+                
+                document.addEventListener('mousemove', resize);
+                document.addEventListener('mouseup', stopResize);
+            }
+            
+            function resize(e) {
+                if (!isResizing) return;
+                
+                const width = startWidth + e.clientX - startX;
+                const minWidth = 250;
+                const maxWidth = 500;
+                
+                if (width >= minWidth && width <= maxWidth) {
+                    sidebar.style.width = width + 'px';
+                }
+            }
+            
+            function stopResize() {
+                isResizing = false;
+                sidebar.classList.remove('resizing');
+                resizeHandle.classList.remove('resizing');
+                
+                document.removeEventListener('mousemove', resize);
+                document.removeEventListener('mouseup', stopResize);
+                
+                // ذخیره اندازه
+                localStorage.setItem('sidebarWidth', sidebar.style.width);
+                
+                // Update map size
+                setTimeout(() => {
+                    map.updateSize();
+                }, 100);
+            }
+            
+            // ===== COLLAPSE/EXPAND FUNCTIONALITY =====
+            collapseBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                
+                if (sidebar.classList.contains('collapsed')) {
+                    // Expand
+                    sidebar.classList.remove('collapsed');
+                    sidebar.style.width = localStorage.getItem('sidebarWidth') || '320px';
+                    collapseBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
+                    localStorage.setItem('sidebarCollapsed', 'false');
+                } else {
+                    // Collapse
+                    sidebar.classList.add('collapsed');
+                    localStorage.setItem('sidebarWidth', sidebar.style.width);
+                    sidebar.style.width = '50px';
+                    collapseBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+                    localStorage.setItem('sidebarCollapsed', 'true');
+                }
+                
+                setTimeout(() => {
+                    map.updateSize();
+                }, 300);
+            });
+            
+            // ===== EVENT LISTENERS =====
+            resizeHandle.addEventListener('mousedown', initResize);
+            
+            // لود اندازه ذخیره شده
+            const savedWidth = localStorage.getItem('sidebarWidth');
+            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            
+            if (savedWidth && !isCollapsed) {
+                sidebar.style.width = savedWidth;
+            }
+            
+            if (isCollapsed) {
+                sidebar.classList.add('collapsed');
+                sidebar.style.width = '50px';
+                collapseBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
+            }
+            
+            // دبل کلیک روی handle برای collapse/expand
+            resizeHandle.addEventListener('dblclick', function() {
+                collapseBtn.click();
+            });
+            
+            // برای تاچ اسکرین
+            resizeHandle.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                initResize(e.touches[0]);
+            });
+            
+            document.addEventListener('touchmove', function(e) {
+                if (isResizing) {
+                    resize(e.touches[0]);
+                }
+            });
+            
+            document.addEventListener('touchend', stopResize);
+        });
+
+        // ==================== INITIALIZATION ====================
+        fetch('/api/airports/')
+            .then(response => response.json())
+            .then(data => {
+                const departureSelect = document.getElementById('departureSelect');
+                const arrivalSelect = document.getElementById('arrivalSelect');
+                
+                data.features.forEach(airport => {
+                    const option = document.createElement('option');
+                    option.value = airport.properties.iata;
+                    option.textContent = `${airport.properties.name} (${airport.properties.iata}/${airport.properties.icao}) - ${airport.properties.city}`;
+                    
+                    departureSelect.appendChild(option.cloneNode(true));
+                    arrivalSelect.appendChild(option);
+                });
+
+                $('.airport-select').select2({
+                    placeholder: "Search by name, IATA, ICAO or city",
+                    width: '100%',
+                    dropdownParent: $('.sidebar')
+                });
+                
+                console.log('Airports loaded:', data.features.length);
+            })
+            .catch(error => {
+                console.error('Error loading airports:', error);
+                showStatus('Error loading airports data', 'error');
+            });
+
+        // Initialize
+        initLayerControls();
+        activateTool('select');
+        loadSavedRoutes();
+        
+        console.log('FlightFuel Application Initialized');
+    </script>
+</body>
+</html>
