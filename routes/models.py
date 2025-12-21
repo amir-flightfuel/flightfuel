@@ -115,7 +115,7 @@ class AirwaySegment(models.Model):
         return f"{self.airway.identifier}: {self.from_waypoint}→{self.to_waypoint}"
 
 class Route(models.Model):
-    name = models.CharField(max_length=100, verbose_name='Route Name', unique=True)
+    name = models.CharField(max_length=100, verbose_name='Route Name')
     departure = models.CharField(max_length=4, verbose_name='Departure (ICAO)', db_index=True)
     arrival = models.CharField(max_length=4, verbose_name='Arrival (ICAO)', db_index=True)
     waypoints = models.JSONField(verbose_name='Waypoints', default=list)

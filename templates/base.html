@@ -135,7 +135,7 @@
             padding-top: 60px;
         }
 
-        /* ==================== RESIZABLE SIDEBAR ==================== */
+        /* ==================== SIDEBAR ==================== */
         .sidebar {
             width: 320px;
             min-width: 250px;
@@ -153,7 +153,6 @@
             overflow: auto;
         }
 
-        /* دسته تغییر اندازه */
         .resize-handle {
             position: absolute;
             right: -5px;
@@ -190,24 +189,14 @@
             opacity: 1;
         }
 
-        /* وقتی در حال resize هست */
         .resizing {
             user-select: none;
         }
 
-        /* Hide the default resize corner */
         .sidebar::-webkit-resizer {
             display: none;
         }
 
-        /* برای مرورگرهای فایرفاکس */
-        @supports (-moz-appearance: none) {
-            .sidebar {
-                overflow: hidden;
-            }
-        }
-
-        /* وقتی sidebar کوچک میشه */
         .sidebar.collapsed {
             width: 50px;
             min-width: 50px;
@@ -224,7 +213,6 @@
             display: none;
         }
 
-        /* دکمه collapse/expand */
         .collapse-btn {
             position: absolute;
             right: -15px;
@@ -258,7 +246,6 @@
             transform: rotate(180deg);
         }
 
-        /* وقتی ماوس روی مرز sidebar هست */
         .sidebar:hover .resize-handle::after {
             opacity: 0.5;
         }
@@ -1074,7 +1061,6 @@
                 right: 10px;
             }
             
-            /* غیرفعال کردن resize در موبایل */
             .sidebar {
                 resize: none;
             }
@@ -1128,7 +1114,7 @@
                 <i class="fas fa-search"></i> Search
             </button>
             
-            <!-- دکمه جدید Route Search -->
+            <!-- Route Search Button -->
             <button class="search-btn" id="routeSearchBtn" style="margin-left: 10px;">
                 <i class="fas fa-route"></i> Route Search
             </button>
@@ -1151,7 +1137,7 @@
             <!-- Resize Handle -->
             <div class="resize-handle" id="resizeHandle"></div>
             
-            <!-- محتوای اصلی sidebar -->
+            <!-- Main sidebar content -->
             <div class="sidebar-content">
                 <!-- Route Builder Section -->
                 <div class="sidebar-section">
@@ -1180,7 +1166,7 @@
                     </div>
                 </div>
 
-                <!-- Layer Controls (جابجا شده به بالا) -->
+                <!-- Layer Controls -->
                 <div class="sidebar-section">
                     <h3 class="section-title">
                         <i class="fas fa-layer-group"></i> Layers
@@ -1213,7 +1199,7 @@
                     </div>
                 </div>
 
-                <!-- Mode Selection (جابجا شده به پایین) -->
+                <!-- Mode Selection -->
                 <div class="sidebar-section">
                     <h3 class="section-title">
                         <i class="fas fa-cogs"></i> Mode
@@ -1250,6 +1236,9 @@
                             </button>
                             <button class="btn btn-warning" id="saveRoute">
                                 <i class="fas fa-save"></i> Save Route
+                            </button>
+                            <button class="btn btn-primary" id="saveRouteAs">
+                                <i class="fas fa-copy"></i> Save As
                             </button>
                             <button class="btn btn-danger" id="disableEdit" style="display: none;">
                                 <i class="fas fa-times"></i> Disable Edit
@@ -1384,7 +1373,7 @@
                     <div class="no-results">
                         <i class="fas fa-route"></i>
                         <h4>No Search Yet</h4>
-                        <p>Enter origin and destination ICAO codes to search for saved routes.</p>
+                        <p>Enter origin and destination airport codes to search for saved routes.</p>
                     </div>
                 </div>
             </div>
@@ -1397,7 +1386,7 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         // ==================== INITIALIZATION ====================
-        console.log('FlightFuel Application Initializing...');
+        console.log('🚀 FlightFuel Application Initializing...');
 
         // ==================== GLOBALS ====================
         const map = new ol.Map({
@@ -1413,7 +1402,7 @@
                 center: ol.proj.fromLonLat([51.3890, 35.6892]),
                 zoom: 5
             }),
-            controls: [] // حذف controls پیش‌فرض OpenLayers
+            controls: []
         });
 
         // ==================== MAP LAYERS ====================
@@ -1591,6 +1580,14 @@
             return R * c;
         }
 
+        function calculateFlightTime(distanceNm) {
+            const hours = distanceNm / 450;
+            const hourInt = Math.floor(hours);
+            const minuteInt = Math.round((hours - hourInt) * 60);
+            
+            return `${hourInt.toString().padStart(2, '0')}:${minuteInt.toString().padStart(2, '0')}`;
+        }
+
         function showStatus(message, type) {
             const statusDiv = document.createElement('div');
             statusDiv.className = `status-message status-${type}`;
@@ -1607,169 +1604,210 @@
             }, 3000);
         }
 
-        // ==================== VALIDATION FUNCTIONS (IATA/ICAO) ====================
-        function validateAirportCode(code) {
+        // ==================== IATA TO ICAO CONVERSION FUNCTIONS ====================
+        async function convertToIcaoIfNeeded(code) {
             code = code.toUpperCase().trim();
             
-            // بررسی طول
-            if (code.length !== 3 && code.length !== 4) {
-                return {
-                    valid: false,
-                    message: 'Airport code must be 3 letters (IATA) or 4 letters (ICAO)'
-                };
+            // اگر قبلاً ICAO هست (۴ حرفی)، همون رو برگردون
+            if (code.length === 4 && /^[A-Z]+$/.test(code)) {
+                console.log(`✅ ${code} is already ICAO`);
+                return code;
             }
             
-            // بررسی حروف
-            if (!/^[A-Z]+$/.test(code)) {
-                return {
-                    valid: false,
-                    message: 'Airport code must contain only letters'
-                };
+            // اگر IATA هست (۳ حرفی)
+            if (code.length === 3 && /^[A-Z]+$/.test(code)) {
+                try {
+                    // جستجو در کش airports
+                    const airports = await getAirportsCache();
+                    const airport = airports.find(a => a.iata === code);
+                    
+                    if (airport && airport.icao) {
+                        console.log(`✅ تبدیل IATA به ICAO: ${code} → ${airport.icao}`);
+                        return airport.icao;
+                    }
+                    
+                    // اگر در کش نبود، از API بپرس
+                    const response = await fetch(`/api/airports/search/?code=${code}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.icao) {
+                            console.log(`✅ تبدیل IATA به ICAO از API: ${code} → ${data.icao}`);
+                            return data.icao;
+                        }
+                    }
+                    
+                    console.warn(`⚠️ کد IATA پیدا نشد: ${code}`);
+                    return code; // اگر تبدیل ممکن نبود، همون کد رو برگردون
+                    
+                } catch (error) {
+                    console.warn(`⚠️ خطا در تبدیل ${code}:`, error);
+                    return code; // در صورت خطا، همون کد رو برگردون
+                }
             }
             
-            return {
-                valid: true,
-                code: code,
-                type: code.length === 3 ? 'IATA' : 'ICAO'
-            };
+            // برای کدهای دیگر (مثلاً ۵ حرفی یا ...)
+            return code;
+        }
+
+        async function getAirportsCache() {
+            const CACHE_KEY = 'airports_data';
+            const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 ساعت
+            
+            // چک کردن کش
+            const cached = localStorage.getItem(CACHE_KEY);
+            if (cached) {
+                const { data, timestamp } = JSON.parse(cached);
+                if (Date.now() - timestamp < CACHE_EXPIRY) {
+                    return data;
+                }
+            }
+            
+            // لود از API
+            try {
+                const response = await fetch('/api/airports/');
+                if (response.ok) {
+                    const geojson = await response.json();
+                    const airports = geojson.features.map(f => ({
+                        iata: f.properties.iata,
+                        icao: f.properties.icao,
+                        name: f.properties.name,
+                        city: f.properties.city,
+                        country: f.properties.country
+                    }));
+                    
+                    // ذخیره در کش
+                    localStorage.setItem(CACHE_KEY, JSON.stringify({
+                        data: airports,
+                        timestamp: Date.now()
+                    }));
+                    
+                    console.log(`✅ Airports cache loaded: ${airports.length} airports`);
+                    return airports;
+                }
+            } catch (error) {
+                console.error('❌ Error loading airports cache:', error);
+            }
+            
+            return [];
         }
 
         // ==================== ROUTE SEARCH FUNCTIONS ====================
-        function openRouteSearchModal() {
-            const modal = document.getElementById('routeSearchModal');
-            modal.classList.add('active');
-            document.getElementById('searchOrigin').focus();
-            
-            // پاک کردن نتایج قبلی
-            document.getElementById('searchResultsContent').innerHTML = `
-                <div class="no-results">
-                    <i class="fas fa-route"></i>
-                    <h4>No Search Yet</h4>
-                    <p>Enter origin and destination airport codes (IATA or ICAO) to search for saved routes.</p>
-                </div>
-            `;
-            document.getElementById('resultsCount').textContent = '0';
-        }
-
-        function closeRouteSearchModal() {
-            const modal = document.getElementById('routeSearchModal');
-            modal.classList.remove('active');
-        }
-
-        function swapSearchInputs() {
-            const originInput = document.getElementById('searchOrigin');
-            const destinationInput = document.getElementById('searchDestination');
-            
-            const temp = originInput.value;
-            originInput.value = destinationInput.value;
-            destinationInput.value = temp;
-            
-            // uppercase کردن خودکار
-            originInput.value = originInput.value.toUpperCase();
-            destinationInput.value = destinationInput.value.toUpperCase();
-            
-            // فوکوس رو به origin ببر
-            originInput.focus();
-        }
-
-        function executeRouteSearch() {
-            const origin = document.getElementById('searchOrigin').value.trim().toUpperCase();
-            const destination = document.getElementById('searchDestination').value.trim().toUpperCase();
-            
-            // اعتبارسنجی جدید (هم IATA و هم ICAO)
-            const originValidation = validateAirportCode(origin);
-            const destinationValidation = validateAirportCode(destination);
-            
-            if (!originValidation.valid) {
-                showStatus(`Origin: ${originValidation.message}`, 'error');
-                document.getElementById('searchOrigin').focus();
-                return;
-            }
-            
-            if (!destinationValidation.valid) {
-                showStatus(`Destination: ${destinationValidation.message}`, 'error');
-                document.getElementById('searchDestination').focus();
-                return;
-            }
-            
-            // اعتبارسنجی یکسان نبودن
-            if (origin === destination) {
-                showStatus('Origin and destination cannot be the same', 'error');
-                return;
-            }
-            
-            // نمایش loading spinner
-            const loadingSpinner = document.getElementById('searchLoadingSpinner');
-            const searchButton = document.getElementById('executeRouteSearch');
-            const resultsContainer = document.getElementById('searchResultsContent');
-            
-            loadingSpinner.classList.add('active');
-            searchButton.disabled = true;
-            resultsContainer.innerHTML = '';
-            
-            // اجرای جستجو - استفاده از API جدید route-search
-            fetch(`/api/route-search/?origin=${origin}&destination=${destination}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    loadingSpinner.classList.remove('active');
-                    searchButton.disabled = false;
-                    
-                    if (data.status === 'error') {
-                        // اگر backend خطا داد
-                        showStatus(data.message, 'error');
-                        
-                        // نمایش پیام خطا در results
-                        resultsContainer.innerHTML = `
-                            <div class="no-results">
-                                <i class="fas fa-exclamation-triangle"></i>
-                                <h4>Search Error</h4>
-                                <p>${data.message}</p>
-                                ${data.suggestion ? `<p style="margin-top: 10px;">Suggestion: ${data.suggestion}</p>` : ''}
-                            </div>
-                        `;
-                        document.getElementById('resultsCount').textContent = '0';
-                    } else {
-                        // نمایش نتایج موفق
-                        displayRouteSearchResults(data.routes || [], origin, destination);
-                    }
-                })
-                .catch(error => {
-                    loadingSpinner.classList.remove('active');
-                    searchButton.disabled = false;
-                    
-                    console.error('Route search error:', error);
+        async function executeRouteSearch() {
+            try {
+                const originInput = document.getElementById('searchOrigin').value.trim().toUpperCase();
+                const destinationInput = document.getElementById('searchDestination').value.trim().toUpperCase();
+                
+                // اعتبارسنجی ساده
+                if (!originInput || !destinationInput) {
+                    showStatus('Please enter both origin and destination', 'error');
+                    return;
+                }
+                
+                if (originInput === destinationInput) {
+                    showStatus('Origin and destination cannot be the same', 'error');
+                    return;
+                }
+                
+                // تبدیل IATA به ICAO
+                const originCode = await convertToIcaoIfNeeded(originInput);
+                const destinationCode = await convertToIcaoIfNeeded(destinationInput);
+                
+                console.log(`🔍 جستجوی مسیر: ${originInput} → ${originCode}, ${destinationInput} → ${destinationCode}`);
+                
+                // نمایش loading
+                const loadingSpinner = document.getElementById('searchLoadingSpinner');
+                const searchButton = document.getElementById('executeRouteSearch');
+                const resultsContainer = document.getElementById('searchResultsContent');
+                
+                loadingSpinner.classList.add('active');
+                searchButton.disabled = true;
+                resultsContainer.innerHTML = '';
+                
+                // سرچ با کدهای تبدیل شده
+                const response = await fetch(`/api/route-search/?origin=${originCode}&destination=${destinationCode}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                loadingSpinner.classList.remove('active');
+                searchButton.disabled = false;
+                
+                if (data.status === 'error') {
+                    showStatus(data.message, 'error');
                     
                     resultsContainer.innerHTML = `
                         <div class="no-results">
                             <i class="fas fa-exclamation-triangle"></i>
                             <h4>Search Error</h4>
-                            <p>Failed to search routes. Please try again.</p>
-                            <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
-                                Error: ${error.message}
-                            </p>
+                            <p>${data.message}</p>
+                            ${data.suggestion ? `<p style="margin-top: 10px;">Suggestion: ${data.suggestion}</p>` : ''}
                         </div>
                     `;
                     document.getElementById('resultsCount').textContent = '0';
+                } else {
+                    // نمایش نتایج
+                    displayRouteSearchResults(data.routes || [], originInput, destinationInput, data);
                     
-                    showStatus('Error searching routes', 'error');
-                });
+                    // نمایش پیام تبدیل
+                    if (originInput !== originCode || destinationInput !== destinationCode) {
+                        showStatus(
+                            `IATA converted: ${originInput}→${originCode}, ${destinationInput}→${destinationCode}`,
+                            'info'
+                        );
+                    }
+                }
+                
+            } catch (error) {
+                const loadingSpinner = document.getElementById('searchLoadingSpinner');
+                const searchButton = document.getElementById('executeRouteSearch');
+                const resultsContainer = document.getElementById('searchResultsContent');
+                
+                loadingSpinner.classList.remove('active');
+                searchButton.disabled = false;
+                
+                console.error('❌ Route search error:', error);
+                
+                resultsContainer.innerHTML = `
+                    <div class="no-results">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h4>Search Error</h4>
+                        <p>Failed to search routes. Please try again.</p>
+                        <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
+                            Error: ${error.message}
+                        </p>
+                    </div>
+                `;
+                document.getElementById('resultsCount').textContent = '0';
+                
+                showStatus('Error searching routes', 'error');
+            }
         }
 
-        function displayRouteSearchResults(routes, origin, destination) {
+        function displayRouteSearchResults(routes, originalOrigin, originalDestination, data = {}) {
             const resultsContainer = document.getElementById('searchResultsContent');
             const resultsCount = document.getElementById('resultsCount');
             
             if (!routes || routes.length === 0) {
+                let searchInfo = '';
+                if (data.search) {
+                    const { origin_icao, destination_icao } = data.search;
+                    if (origin_icao && origin_icao !== originalOrigin) {
+                        searchInfo += `<div><small>Origin converted: ${originalOrigin} → ${origin_icao}</small></div>`;
+                    }
+                    if (destination_icao && destination_icao !== originalDestination) {
+                        searchInfo += `<div><small>Destination converted: ${originalDestination} → ${destination_icao}</small></div>`;
+                    }
+                }
+                
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-search"></i>
                         <h4>No Routes Found</h4>
-                        <p>No saved routes found from ${origin} to ${destination}.</p>
+                        <p>No saved routes found from ${originalOrigin} to ${originalDestination}.</p>
+                        ${searchInfo}
                         <p style="margin-top: 10px; font-size: 14px;">
                             Try creating a new route using the Route Builder.
                         </p>
@@ -1781,7 +1819,23 @@
             
             resultsCount.textContent = routes.length;
             
-            let html = '';
+            // نمایش اطلاعات تبدیل
+            let conversionInfo = '';
+            if (data.search) {
+                const { origin_icao, destination_icao } = data.search;
+                if (origin_icao && origin_icao !== originalOrigin) {
+                    conversionInfo += `<div style="background: #e8f0fe; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 13px;">
+                        <i class="fas fa-exchange-alt"></i> <strong>Origin converted:</strong> ${originalOrigin} (IATA) → ${origin_icao} (ICAO)
+                    </div>`;
+                }
+                if (destination_icao && destination_icao !== originalDestination) {
+                    conversionInfo += `<div style="background: #e8f0fe; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 13px;">
+                        <i class="fas fa-exchange-alt"></i> <strong>Destination converted:</strong> ${originalDestination} (IATA) → ${destination_icao} (ICAO)
+                    </div>`;
+                }
+            }
+            
+            let html = conversionInfo;
             routes.forEach((route, index) => {
                 const routeName = route.name || `Route ${route.departure} to ${route.arrival}`;
                 const distance = route.total_distance ? `${route.total_distance.toFixed(1)} NM` : 'N/A';
@@ -1834,10 +1888,10 @@
                         </div>
                         
                         <div class="route-actions">
-                            <button class="load-route-btn" onclick="loadRouteFromSearch(${route.id})">
+                            <button class="load-route-btn" onclick="window.loadRouteFromSearch(${route.id})">
                                 <i class="fas fa-map-marker-alt"></i> Load on Map
                             </button>
-                            <button class="view-details-btn" onclick="viewRouteDetails(${route.id})">
+                            <button class="view-details-btn" onclick="window.viewRouteDetails(${route.id})">
                                 <i class="fas fa-info-circle"></i> Details
                             </button>
                         </div>
@@ -1846,12 +1900,44 @@
             });
             
             resultsContainer.innerHTML = html;
-            
-            // نمایش پیام موفقیت
-            showStatus(`Found ${routes.length} route(s) from ${origin} to ${destination}`, 'success');
         }
 
-        // Global function for loading routes from search
+        function openRouteSearchModal() {
+            const modal = document.getElementById('routeSearchModal');
+            modal.classList.add('active');
+            document.getElementById('searchOrigin').focus();
+            
+            // پاک کردن نتایج قبلی
+            document.getElementById('searchResultsContent').innerHTML = `
+                <div class="no-results">
+                    <i class="fas fa-route"></i>
+                    <h4>No Search Yet</h4>
+                    <p>Enter origin and destination airport codes (IATA or ICAO) to search for saved routes.</p>
+                </div>
+            `;
+            document.getElementById('resultsCount').textContent = '0';
+        }
+
+        function closeRouteSearchModal() {
+            const modal = document.getElementById('routeSearchModal');
+            modal.classList.remove('active');
+        }
+
+        function swapSearchInputs() {
+            const originInput = document.getElementById('searchOrigin');
+            const destinationInput = document.getElementById('searchDestination');
+            
+            const temp = originInput.value;
+            originInput.value = destinationInput.value;
+            destinationInput.value = temp;
+            
+            originInput.value = originInput.value.toUpperCase();
+            destinationInput.value = destinationInput.value.toUpperCase();
+            
+            originInput.focus();
+        }
+
+        // Global functions for route loading
         window.loadRouteFromSearch = function(routeId) {
             console.log('Loading route from search:', routeId);
             
@@ -1861,12 +1947,8 @@
                     if (data.status === 'success') {
                         const route = data.routes.find(r => r.id === routeId);
                         if (route) {
-                            // بستن modal
                             closeRouteSearchModal();
-                            
-                            // بارگذاری مسیر روی نقشه
                             loadRouteOnMap(route);
-                            
                             showStatus(`Route "${route.name || 'Unnamed'}" loaded successfully`, 'success');
                         } else {
                             showStatus('Route not found', 'error');
@@ -1880,6 +1962,90 @@
                     showStatus('Error loading route: ' + error, 'error');
                 });
         };
+
+        window.viewRouteDetails = function(routeId) {
+            alert(`Route ID: ${routeId}\nDetailed view coming soon...`);
+        };
+
+        // ==================== SHOW DIRECT ROUTE FUNCTION ====================
+        function showDirectRoute(departure, arrival) {
+            console.log('Creating route from', departure, 'to', arrival);
+            
+            routeLayer.getSource().clear();
+            
+            fetch('/api/airports/')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to load airport data');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const depAirport = data.features.find(airport => 
+                        airport.properties.iata === departure || 
+                        airport.properties.icao === departure
+                    );
+                    
+                    const arrAirport = data.features.find(airport =>
+                        airport.properties.iata === arrival || 
+                        airport.properties.icao === arrival
+                    );
+                    
+                    if (!depAirport) {
+                        showStatus(`Departure airport ${departure} not found`, 'error');
+                        return;
+                    }
+                    
+                    if (!arrAirport) {
+                        showStatus(`Arrival airport ${arrival} not found`, 'error');
+                        return;
+                    }
+                    
+                    const depCoords = ol.proj.fromLonLat(depAirport.geometry.coordinates);
+                    const arrCoords = ol.proj.fromLonLat(arrAirport.geometry.coordinates);
+                    
+                    routeFeature = new ol.Feature({
+                        geometry: new ol.geom.LineString([depCoords, arrCoords]),
+                        properties: {
+                            departure: departure,
+                            arrival: arrival,
+                            depName: depAirport.properties.name,
+                            arrName: arrAirport.properties.name
+                        }
+                    });
+                    
+                    routeLayer.getSource().addFeature(routeFeature);
+                    routeLayer.setVisible(true);
+                    document.getElementById('toggleRoute').checked = true;
+                    sessionStorage.setItem('toggleRoute', 'true');
+                    
+                    updateRouteInfo();
+                    document.getElementById('routeInfo').classList.add('active');
+                    
+                    showStatus(`Route ${departure} → ${arrival} created!`, 'success');
+                })
+                .catch(error => {
+                    console.error('Error loading airports:', error);
+                    showStatus('Error: Could not load airport data. Using default coordinates.', 'error');
+                    
+                    const depCoords = ol.proj.fromLonLat([51.3890, 35.6892]);
+                    const arrCoords = ol.proj.fromLonLat([59.6400, 36.2350]);
+                    
+                    routeFeature = new ol.Feature({
+                        geometry: new ol.geom.LineString([depCoords, arrCoords]),
+                        properties: {
+                            departure: departure,
+                            arrival: arrival
+                        }
+                    });
+                    
+                    routeLayer.getSource().addFeature(routeFeature);
+                    routeLayer.setVisible(true);
+                    document.getElementById('toggleRoute').checked = true;
+                    updateRouteInfo();
+                    document.getElementById('routeInfo').classList.add('active');
+                });
+        }
 
         function loadRouteOnMap(route) {
             routeLayer.getSource().clear();
@@ -1931,23 +2097,46 @@
             document.getElementById('toggleRoute').checked = true;
             sessionStorage.setItem('toggleRoute', 'true');
             
-            // آپدیت اطلاعات مسیر
             updateRouteInfoForSavedRoute(route);
             document.getElementById('routeInfo').classList.add('active');
             
-            // ست کردن مقادیر در select boxes
             $('#departureSelect').val(route.departure).trigger('change');
             $('#arrivalSelect').val(route.arrival).trigger('change');
             
-            // زوم کردن به مسیر
             zoomToRoute(coordinates);
+        }
+
+        function updateRouteInfo() {
+            if (routeFeature) {
+                const geometry = routeFeature.getGeometry();
+                const coordinates = geometry.getCoordinates();
+                
+                let totalDistance = 0;
+                for (let i = 0; i < coordinates.length - 1; i++) {
+                    const coord1 = ol.proj.toLonLat(coordinates[i]);
+                    const coord2 = ol.proj.toLonLat(coordinates[i + 1]);
+                    totalDistance += calculateDistance(coord1, coord2);
+                }
+                
+                const props = routeFeature.getProperties();
+                const depName = props.depName || props.departure;
+                const arrName = props.arrName || props.arrival;
+                
+                document.getElementById('routeDetails').innerHTML = `
+                    <div><strong>Route:</strong> ${props.departure} → ${props.arrival}</div>
+                    <div><strong>From:</strong> ${depName}</div>
+                    <div><strong>To:</strong> ${arrName}</div>
+                    <div><strong>Total Distance:</strong> ${totalDistance.toFixed(1)} NM</div>
+                    <div><strong>Estimated Time:</strong> ${calculateFlightTime(totalDistance)}</div>
+                    <div><strong>Waypoints:</strong> 2 (Direct)</div>
+                `;
+            }
         }
 
         function updateRouteInfoForSavedRoute(route) {
             const distance = route.total_distance ? route.total_distance.toFixed(1) : 'N/A';
             const flightTime = route.flight_time || 'N/A';
             const waypointCount = route.waypoints ? route.waypoints.length : 0;
-            const altitude = route.cruise_altitude ? `${route.cruise_altitude.toLocaleString()} ft` : '35,000 ft';
             
             document.getElementById('routeDetails').innerHTML = `
                 <div><strong>Route:</strong> ${route.name || `Route ${route.departure} → ${route.arrival}`}</div>
@@ -1956,8 +2145,6 @@
                 <div><strong>Total Distance:</strong> ${distance} NM</div>
                 <div><strong>Flight Time:</strong> ${flightTime}</div>
                 <div><strong>Waypoints:</strong> ${waypointCount}</div>
-                <div><strong>Cruise Altitude:</strong> ${altitude}</div>
-                ${route.description ? `<div><strong>Description:</strong> ${route.description}</div>` : ''}
                 <div><strong>Saved:</strong> ${route.created_at ? new Date(route.created_at).toLocaleDateString() : 'Unknown'}</div>
             `;
         }
@@ -1973,135 +2160,6 @@
             }
         }
 
-        window.viewRouteDetails = function(routeId) {
-            // در اینجا می‌توانید یک modal جزئیات ایجاد کنید
-            alert(`Route ID: ${routeId}\nDetailed view coming soon...`);
-        };
-
-        // ==================== SHOW DIRECT ROUTE FUNCTION ====================
-        function showDirectRoute(departure, arrival) {
-            console.log('Creating route from', departure, 'to', arrival);
-            
-            // پاک کردن route قبلی
-            routeLayer.getSource().clear();
-            
-            // پیدا کردن مختصات واقعی airports از API
-            fetch('/api/airports/')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Failed to load airport data');
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    // پیدا کردن departure airport
-                    const depAirport = data.features.find(airport => 
-                        airport.properties.iata === departure || 
-                        airport.properties.icao === departure
-                    );
-                    
-                    // پیدا کردن arrival airport  
-                    const arrAirport = data.features.find(airport =>
-                        airport.properties.iata === arrival || 
-                        airport.properties.icao === arrival
-                    );
-                    
-                    if (!depAirport) {
-                        showStatus(`Departure airport ${departure} not found`, 'error');
-                        return;
-                    }
-                    
-                    if (!arrAirport) {
-                        showStatus(`Arrival airport ${arrival} not found`, 'error');
-                        return;
-                    }
-                    
-                    // گرفتن مختصات واقعی
-                    const depCoords = ol.proj.fromLonLat(depAirport.geometry.coordinates);
-                    const arrCoords = ol.proj.fromLonLat(arrAirport.geometry.coordinates);
-                    
-                    console.log('Departure coords:', depAirport.geometry.coordinates);
-                    console.log('Arrival coords:', arrAirport.geometry.coordinates);
-                    
-                    // ایجاد خط بین airports واقعی
-                    routeFeature = new ol.Feature({
-                        geometry: new ol.geom.LineString([depCoords, arrCoords]),
-                        properties: {
-                            departure: departure,
-                            arrival: arrival,
-                            depName: depAirport.properties.name,
-                            arrName: arrAirport.properties.name
-                        }
-                    });
-                    
-                    // اضافه کردن به لایه
-                    routeLayer.getSource().addFeature(routeFeature);
-                    routeLayer.setVisible(true);
-                    document.getElementById('toggleRoute').checked = true;
-                    sessionStorage.setItem('toggleRoute', 'true');
-                    
-                    // محاسبه و نمایش اطلاعات
-                    updateRouteInfo();
-                    document.getElementById('routeInfo').classList.add('active');
-                    
-                    console.log('Route created successfully');
-                    showStatus(`Route ${departure} → ${arrival} created!`, 'success');
-                })
-                .catch(error => {
-                    console.error('Error loading airports:', error);
-                    showStatus('Error: Could not load airport data. Using default coordinates.', 'error');
-                    
-                    // اگر API کار نکرد، حداقل خطی بکش
-                    const depCoords = ol.proj.fromLonLat([51.3890, 35.6892]); // تهران
-                    const arrCoords = ol.proj.fromLonLat([59.6400, 36.2350]); // مشهد
-                    
-                    routeFeature = new ol.Feature({
-                        geometry: new ol.geom.LineString([depCoords, arrCoords]),
-                        properties: {
-                            departure: departure,
-                            arrival: arrival
-                        }
-                    });
-                    
-                    routeLayer.getSource().addFeature(routeFeature);
-                    routeLayer.setVisible(true);
-                    document.getElementById('toggleRoute').checked = true;
-                    updateRouteInfo();
-                    document.getElementById('routeInfo').classList.add('active');
-                });
-        }
-
-        // ==================== UPDATE ROUTE INFO FUNCTION ====================
-        function updateRouteInfo() {
-            if (routeFeature) {
-                const geometry = routeFeature.getGeometry();
-                const coordinates = geometry.getCoordinates();
-                
-                // محاسبه مسافت
-                let totalDistance = 0;
-                for (let i = 0; i < coordinates.length - 1; i++) {
-                    const coord1 = ol.proj.toLonLat(coordinates[i]);
-                    const coord2 = ol.proj.toLonLat(coordinates[i + 1]);
-                    totalDistance += calculateDistance(coord1, coord2);
-                }
-                
-                const props = routeFeature.getProperties();
-                const depName = props.depName || props.departure;
-                const arrName = props.arrName || props.arrival;
-                
-                // نمایش اطلاعات
-                document.getElementById('routeDetails').innerHTML = `
-                    <div><strong>Route:</strong> ${props.departure} → ${props.arrival}</div>
-                    <div><strong>From:</strong> ${depName}</div>
-                    <div><strong>To:</strong> ${arrName}</div>
-                    <div><strong>Total Distance:</strong> ${totalDistance.toFixed(1)} NM</div>
-                    <div><strong>Estimated Time:</strong> ${(totalDistance / 450).toFixed(1)} hours</div>
-                    <div><strong>Waypoints:</strong> 2 (Direct)</div>
-                    <div><strong>Altitude:</strong> 35,000 ft</div>
-                `;
-            }
-        }
-
         // ==================== TOOLTIP HANDLING ====================
         map.on('pointermove', function(event) {
             const pixel = map.getEventPixel(event.originalEvent);
@@ -2110,7 +2168,6 @@
             wpTooltipOverlay.setPosition(undefined);
             map.getTarget().style.cursor = '';
             
-            // Check FIR features
             let feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
                 if (layer === firLayer) {
                     return feature;
@@ -2139,7 +2196,6 @@
                 return;
             }
             
-            // Check Waypoints and Airports
             feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
                 if (layer === waypointLayer || layer === airportLayer) {
                     return feature;
@@ -2151,7 +2207,6 @@
                 const props = feature.getProperties();
                 let tooltipText = '';
                 
-                // Check if it's an airport (has iata code)
                 if (props.iata) {
                     tooltipText = `
                         <div style="text-align: left;">
@@ -2164,9 +2219,7 @@
                         </div>
                         <div class="tooltip-arrow"></div>
                     `;
-                } 
-                // Check if it's a waypoint (has identifier)
-                else if (props.identifier) {
+                } else if (props.identifier) {
                     const type = props.type || 'WAYPOINT';
                     const frequency = props.frequency ? `${props.frequency} MHz` : 'N/A';
                     const elevation = props.elevation ? `${props.elevation} ft` : 'N/A';
@@ -2264,7 +2317,6 @@
             const mapElement = document.getElementById('map');
             mapElement.classList.remove('cursor-crosshair', 'cursor-grab', 'cursor-grabbing');
             
-            // تنظیم active/inactive کردن DragPan بر اساس tool
             map.getInteractions().forEach(interaction => {
                 if (interaction instanceof ol.interaction.DragPan) {
                     interaction.setActive(toolName === 'pan');
@@ -2309,7 +2361,6 @@
         function activateMeasureTool() {
             console.log('Activating measure tool...');
             
-            // پاک کردن measure tool قبلی اگر هست
             removeAllInteractions();
             
             const source = new ol.source.Vector();
@@ -2339,13 +2390,11 @@
                         })
                     ];
                     
-                    // نمایش مسافت روی خط
                     if (distance) {
                         const geometry = feature.getGeometry();
                         const coordinates = geometry.getCoordinates();
                         
                         if (coordinates.length > 1) {
-                            // نقطه وسط خط رو پیدا کن
                             const midIndex = Math.floor(coordinates.length / 2);
                             const midPoint = coordinates[midIndex];
                             
@@ -2409,7 +2458,6 @@
                 const geometry = feature.getGeometry();
                 const coordinates = geometry.getCoordinates();
                 
-                // محاسبه کل مسافت
                 totalDistance = 0;
                 for (let i = 0; i < coordinates.length - 1; i++) {
                     const coord1 = ol.proj.toLonLat(coordinates[i]);
@@ -2417,16 +2465,11 @@
                     totalDistance += calculateDistance(coord1, coord2);
                 }
                 
-                // ذخیره distance در feature
                 feature.set('distance', totalDistance);
-                
-                // آپدیت style
                 measureLayer.changed();
                 
-                // نمایش پیام
                 showStatus(`Measured distance: ${totalDistance.toFixed(1)} NM`, 'success');
                 
-                // پاک کردن بعد از ۴ ثانیه
                 setTimeout(function() {
                     if (measureLayer) {
                         map.removeLayer(measureLayer);
@@ -2435,451 +2478,8 @@
                 }, 4000);
             });
             
-            // تنظیم cursor
             document.getElementById('map').classList.add('cursor-crosshair');
         }
-
-        // ==================== PROFESSIONAL INTERNATIONAL TOOLTIP ====================
-        map.on('click', function(event) {
-            // Hide previous tooltips
-            if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
-            if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
-            
-            const pixel = event.pixel;
-            let feature = null;
-            let layerType = null;
-            
-            // Check all layers and identify type
-            map.forEachFeatureAtPixel(pixel, function(f, layer) {
-                feature = f;
-                if (layer === firLayer) {
-                    layerType = 'FIR';
-                } else if (layer === airportLayer) {
-                    layerType = 'AIRPORT';
-                } else if (layer === waypointLayer) {
-                    layerType = 'WAYPOINT';
-                } else if (layer === routeLayer) {
-                    layerType = 'ROUTE';
-                }
-                return f;
-            });
-            
-            if (feature && (wpTooltipOverlay || firTooltipOverlay)) {
-                const props = feature.getProperties();
-                
-                // ========== FIR TOOLTIP ==========
-                if (layerType === 'FIR') {
-                    const identifier = props.identifier || 'N/A';
-                    const name = props.name || 'Flight Information Region';
-                    
-                    let tooltipHTML = `
-                        <div style="padding: 12px; min-width: 240px; background: #ea4335; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
-                            <button onclick="document.querySelector('.fir-tooltip').style.display='none'" 
-                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
-                                ×
-                            </button>
-                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                                <span style="font-size: 20px; margin-right: 10px;">🛂</span>
-                                <div>
-                                    <strong style="font-size: 16px; display: block;">${identifier} FIR</strong>
-                                    <span style="font-size: 12px; opacity: 0.9;">${name}</span>
-                                </div>
-                            </div>
-                    `;
-                    
-                    // FIR specific information
-                    tooltipHTML += `<div style="font-size: 12px; line-height: 1.5;">`;
-                    
-                    if (props.country) {
-                        tooltipHTML += `<div><strong>Country:</strong> ${props.country}</div>`;
-                    }
-                    
-                    if (props.country_code) {
-                        tooltipHTML += `<div><strong>Country Code:</strong> ${props.country_code}</div>`;
-                    }
-                    
-                    if (props.frequency) {
-                        tooltipHTML += `<div><strong>Frequency:</strong> ${props.frequency}</div>`;
-                    }
-                    
-                    if (props.emergency_frequency) {
-                        tooltipHTML += `<div><strong>Emergency Freq:</strong> ${props.emergency_frequency}</div>`;
-                    }
-                    
-                    // Altitude limits
-                    const lowerLimit = props.lower_limit || 0;
-                    const upperLimit = props.upper_limit || 99999;
-                    tooltipHTML += `<div><strong>Altitude Limits:</strong> ${lowerLimit} - ${upperLimit} ft</div>`;
-                    
-                    if (props.icao_region) {
-                        const regionMap = {
-                            'AS': 'Asia',
-                            'EU': 'Europe',
-                            'AF': 'Africa',
-                            'NA': 'North America',
-                            'SA': 'South America',
-                            'PA': 'Pacific',
-                            'ME': 'Middle East'
-                        };
-                        const regionName = regionMap[props.icao_region] || props.icao_region;
-                        tooltipHTML += `<div><strong>ICAO Region:</strong> ${regionName}</div>`;
-                    }
-                    
-                    // Coordinates
-                    const coords = ol.proj.toLonLat(event.coordinate);
-                    const lat = coords[1].toFixed(4);
-                    const lon = coords[0].toFixed(4);
-                    const latDir = lat >= 0 ? 'N' : 'S';
-                    const lonDir = lon >= 0 ? 'E' : 'W';
-                    
-                    tooltipHTML += `<hr style="margin: 10px 0; border: none; border-top: 1px solid rgba(255,255,255,0.3);">`;
-                    tooltipHTML += `<div style="font-size: 11px; font-family: 'Courier New', monospace;">
-                        <strong>Click Coordinates:</strong><br>
-                        ${Math.abs(lat)}°${latDir} ${Math.abs(lon)}°${lonDir}
-                    </div>`;
-                    
-                    // Area if available
-                    if (props.area_km2) {
-                        tooltipHTML += `<div style="margin-top: 5px; font-size: 11px;">
-                            <strong>Approx. Area:</strong> ${parseInt(props.area_km2).toLocaleString()} km²
-                        </div>`;
-                    }
-                    
-                    if (props.is_active !== undefined) {
-                        tooltipHTML += `<div><strong>Active:</strong> ${props.is_active ? '✅ Yes' : '❌ No'}</div>`;
-                    }
-                    
-                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
-                    
-                    firTooltipElement.innerHTML = tooltipHTML;
-                    firTooltipOverlay.setPosition(event.coordinate);
-                    
-                    // Auto-hide after 10 seconds (10000ms)
-                    setTimeout(() => {
-                        if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
-                    }, 10000);
-                }
-                
-                // ========== AIRPORT TOOLTIP ==========
-                else if (layerType === 'AIRPORT') {
-                    const name = props.name || 'No name available';
-                    const iata = props.iata || 'N/A';
-                    const icao = props.icao || 'N/A';
-                    const country = props.country || 'N/A';
-                    const city = props.city || 'N/A';
-                    
-                    // Determine FIR from coordinates
-                    let firCode = 'N/A';
-                    if (firLayer && firLayer.getVisible()) {
-                        const firSource = firLayer.getSource();
-                        const firFeatures = firSource.getFeatures();
-                        
-                        for (let firFeature of firFeatures) {
-                            const firGeometry = firFeature.getGeometry();
-                            if (firGeometry && firGeometry.intersectsCoordinate(event.coordinate)) {
-                                firCode = firFeature.get('identifier') || 'N/A';
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Build professional airport tooltip
-                    let tooltipHTML = `
-                        <div style="padding: 12px; min-width: 260px; background: #1a73e8; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
-                            <button onclick="document.querySelector('.wp-tooltip').style.display='none'" 
-                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
-                                ×
-                            </button>
-                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                                <span style="font-size: 22px; margin-right: 12px;">✈</span>
-                                <div>
-                                    <strong style="font-size: 17px; display: block;">${name}</strong>
-                                    <span style="font-size: 12px; opacity: 0.9;">AIRPORT</span>
-                                </div>
-                            </div>
-                    `;
-                    
-                    // Main information
-                    tooltipHTML += `<div style="font-size: 13px; line-height: 1.6;">`;
-                    
-                    // Display both IATA and ICAO
-                    tooltipHTML += `<div style="margin-bottom: 5px;">
-                        <strong>IATA:</strong> <span style="font-family: 'Courier New', monospace; font-weight: bold;">${iata}</span> | 
-                        <strong>ICAO:</strong> <span style="font-family: 'Courier New', monospace; font-weight: bold;">${icao}</span>
-                    </div>`;
-                    
-                    // Location info
-                    if (city !== 'N/A') {
-                        tooltipHTML += `<div><strong>City:</strong> ${city}</div>`;
-                    }
-                    
-                    if (country !== 'N/A') {
-                        tooltipHTML += `<div><strong>Country:</strong> ${country}</div>`;
-                    }
-                    
-                    // FIR info
-                    if (firCode !== 'N/A') {
-                        tooltipHTML += `<div><strong>FIR:</strong> ${firCode}</div>`;
-                    }
-                    
-                    // Airport details
-                    if (props.elevation) {
-                        tooltipHTML += `<div><strong>Elevation:</strong> ${props.elevation} ft</div>`;
-                    }
-                    
-                    if (props.runway_length) {
-                        tooltipHTML += `<div><strong>Longest Runway:</strong> ${props.runway_length} m</div>`;
-                    }
-                    
-                    // Coordinates
-                    const coords = ol.proj.toLonLat(event.coordinate);
-                    const lat = coords[1].toFixed(4);
-                    const lon = coords[0].toFixed(4);
-                    const latDir = lat >= 0 ? 'N' : 'S';
-                    const lonDir = lon >= 0 ? 'E' : 'W';
-                    
-                    tooltipHTML += `<hr style="margin: 10px 0; border: none; border-top: 1px solid rgba(255,255,255,0.3);">`;
-                    tooltipHTML += `<div style="font-size: 12px; font-family: 'Courier New', monospace;">
-                        <strong>Coordinates:</strong><br>
-                        ${Math.abs(lat)}°${latDir} ${Math.abs(lon)}°${lonDir}
-                    </div>`;
-                    
-                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
-                    
-                    // Display tooltip
-                    wpTooltipElement.innerHTML = tooltipHTML;
-                    wpTooltipOverlay.setPosition(event.coordinate);
-                    
-                    // Auto-hide after 10 seconds
-                    setTimeout(() => {
-                        if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
-                    }, 10000);
-                }
-                
-                // ========== WAYPOINT TOOLTIP ==========
-                else if (layerType === 'WAYPOINT') {
-                    const identifier = props.identifier || 'N/A';
-                    const name = props.name || 'No name available';
-                    const type = props.type || 'WAYPOINT';
-                    const country = props.country || 'N/A';
-                    
-                    // Determine FIR from coordinates
-                    let firCode = 'N/A';
-                    if (firLayer && firLayer.getVisible()) {
-                        const firSource = firLayer.getSource();
-                        const firFeatures = firSource.getFeatures();
-                        
-                        for (let firFeature of firFeatures) {
-                            const firGeometry = firFeature.getGeometry();
-                            if (firGeometry && firGeometry.intersectsCoordinate(event.coordinate)) {
-                                firCode = firFeature.get('identifier') || 'N/A';
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Determine color and icon based on type
-                    let icon = '📍';
-                    let color = '#1a73e8';
-                    let typeDisplay = type;
-                    
-                    switch(type.toUpperCase()) {
-                        case 'VOR':
-                            icon = '📡';
-                            color = '#FF6B35';
-                            typeDisplay = 'VOR/DME';
-                            break;
-                        case 'NDB':
-                            icon = '📻';
-                            color = '#34a853';
-                            typeDisplay = 'NDB';
-                            break;
-                        case 'DME':
-                            icon = '📡';
-                            color = '#9C27B0';
-                            typeDisplay = 'DME';
-                            break;
-                        case 'TACAN':
-                            icon = '🛰️';
-                            color = '#FF9800';
-                            typeDisplay = 'TACAN';
-                            break;
-                        case 'FIX':
-                            icon = '📍';
-                            color = '#5f6368';
-                            typeDisplay = 'FIX';
-                            break;
-                        case 'VORTAC':
-                            icon = '📡';
-                            color = '#E91E63';
-                            typeDisplay = 'VORTAC';
-                            break;
-                        case 'IAF':
-                            icon = '📍';
-                            color = '#2196F3';
-                            typeDisplay = 'Initial Approach Fix';
-                            break;
-                        case 'FAF':
-                            icon = '📍';
-                            color = '#4CAF50';
-                            typeDisplay = 'Final Approach Fix';
-                            break;
-                        case 'RNAV':
-                            icon = '📍';
-                            color = '#9C27B0';
-                            typeDisplay = 'RNAV Waypoint';
-                            break;
-                    }
-                    
-                    // Build waypoint tooltip
-                    let tooltipHTML = `
-                        <div style="padding: 12px; min-width: 240px; background: ${color}; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
-                            <button onclick="document.querySelector('.wp-tooltip').style.display='none'" 
-                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
-                                ×
-                            </button>
-                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                                <span style="font-size: 22px; margin-right: 12px;">${icon}</span>
-                                <div>
-                                    <strong style="font-size: 17px; display: block; font-family: 'Courier New', monospace;">${identifier}</strong>
-                                    <span style="font-size: 12px; opacity: 0.9;">${typeDisplay}</span>
-                                </div>
-                            </div>
-                    `;
-                    
-                    // Main information
-                    tooltipHTML += `<div style="font-size: 13px; line-height: 1.6;">`;
-                    
-                    if (name && name !== 'No name available') {
-                        tooltipHTML += `<div><strong>Name:</strong> ${name}</div>`;
-                    }
-                    
-                    if (country !== 'N/A') {
-                        tooltipHTML += `<div><strong>Country:</strong> ${country}</div>`;
-                    }
-                    
-                    // FIR info
-                    if (firCode !== 'N/A') {
-                        tooltipHTML += `<div><strong>FIR:</strong> ${firCode}</div>`;
-                    }
-                    
-                    // Technical details
-                    if (props.frequency) {
-                        tooltipHTML += `<div><strong>Frequency:</strong> ${props.frequency} MHz</div>`;
-                    }
-                    
-                    if (props.elevation) {
-                        tooltipHTML += `<div><strong>Elevation:</strong> ${props.elevation} ft</div>`;
-                    }
-                    
-                    if (props.magnetic_variation) {
-                        const magVar = parseFloat(props.magnetic_variation);
-                        const direction = magVar >= 0 ? 'E' : 'W';
-                        tooltipHTML += `<div><strong>Magnetic Variation:</strong> ${Math.abs(magVar)}°${direction}</div>`;
-                    }
-                    
-                    // Coordinates
-                    const coords = ol.proj.toLonLat(event.coordinate);
-                    const lat = coords[1].toFixed(4);
-                    const lon = coords[0].toFixed(4);
-                    const latDir = lat >= 0 ? 'N' : 'S';
-                    const lonDir = lon >= 0 ? 'E' : 'W';
-                    
-                    tooltipHTML += `<hr style="margin: 10px 0; border: none; border-top: 1px solid rgba(255,255,255,0.3);">`;
-                    tooltipHTML += `<div style="font-size: 12px; font-family: 'Courier New', monospace;">
-                        <strong>Coordinates:</strong><br>
-                        ${Math.abs(lat)}°${latDir} ${Math.abs(lon)}°${lonDir}
-                    </div>`;
-                    
-                    // Source info
-                    if (props.source) {
-                        tooltipHTML += `<div style="margin-top: 5px; font-size: 11px; opacity: 0.8;">
-                            <strong>Source:</strong> ${props.source}
-                        </div>`;
-                    }
-                    
-                    if (props.is_active !== undefined) {
-                        tooltipHTML += `<div><strong>Active:</strong> ${props.is_active ? '✅ Yes' : '❌ No'}</div>`;
-                    }
-                    
-                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
-                    
-                    // Display tooltip
-                    wpTooltipElement.innerHTML = tooltipHTML;
-                    wpTooltipOverlay.setPosition(event.coordinate);
-                    
-                    // Auto-hide after 10 seconds
-                    setTimeout(() => {
-                        if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
-                    }, 10000);
-                }
-                
-                // ========== ROUTE TOOLTIP ==========
-                else if (layerType === 'ROUTE') {
-                    const departure = props.departure || 'N/A';
-                    const arrival = props.arrival || 'N/A';
-                    
-                    let tooltipHTML = `
-                        <div style="padding: 12px; min-width: 200px; background: #1a73e8; color: white; border-radius: 6px; border: 2px solid white; font-family: Arial, sans-serif; position: relative;">
-                            <button onclick="document.querySelector('.wp-tooltip').style.display='none'" 
-                                    style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: white; cursor: pointer; font-size: 16px; padding: 0 5px;">
-                                ×
-                            </button>
-                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                                <span style="font-size: 20px; margin-right: 10px;">🛣️</span>
-                                <div>
-                                    <strong style="font-size: 16px; display: block;">${departure} → ${arrival}</strong>
-                                    <span style="font-size: 11px; opacity: 0.9;">ROUTE</span>
-                                </div>
-                            </div>
-                    `;
-                    
-                    // Route information
-                    tooltipHTML += `<div style="font-size: 12px; line-height: 1.5;">`;
-                    tooltipHTML += `<div><strong>Type:</strong> Flight Route</div>`;
-                    
-                    if (props.total_distance) {
-                        tooltipHTML += `<div><strong>Distance:</strong> ${props.total_distance} NM</div>`;
-                    }
-                    
-                    if (props.waypoints && Array.isArray(props.waypoints)) {
-                        tooltipHTML += `<div><strong>Waypoints:</strong> ${props.waypoints.length}</div>`;
-                    }
-                    
-                    tooltipHTML += `</div></div><div class="tooltip-arrow"></div>`;
-                    
-                    wpTooltipElement.innerHTML = tooltipHTML;
-                    wpTooltipOverlay.setPosition(event.coordinate);
-                    
-                    // Auto-hide after 10 seconds
-                    setTimeout(() => {
-                        if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
-                    }, 10000);
-                }
-            }
-        });
-
-        // Hide tooltip when clicking empty map
-        map.on('singleclick', function(event) {
-            const pixel = event.pixel;
-            const feature = map.forEachFeatureAtPixel(pixel, function(f) {
-                return f;
-            });
-            
-            if (!feature) {
-                if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
-                if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
-            }
-        });
-
-        // ESC key to close tooltip
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                if (wpTooltipOverlay) wpTooltipOverlay.setPosition(undefined);
-                if (firTooltipOverlay) firTooltipOverlay.setPosition(undefined);
-                closeRouteSearchModal();
-            }
-        });
 
         // ==================== EDIT TOOLS ====================
         function enableRouteEditing() {
@@ -2894,7 +2494,6 @@
             
             removeAllInteractions();
             
-            // Create modify interaction
             modifyInteraction = new ol.interaction.Modify({
                 source: routeLayer.getSource(),
                 style: new ol.style.Style({
@@ -2905,14 +2504,12 @@
                     })
                 }),
                 condition: function(event) {
-                    // Only allow modification when not panning
                     return ol.events.condition.primaryAction(event) && 
                            ol.events.condition.noModifierKeys(event) &&
                            !ol.events.condition.singleClick(event);
                 }
             });
 
-            // Create snap interaction
             snapInteraction = new ol.interaction.Snap({
                 source: waypointLayer.getSource(),
                 pixelTolerance: 10
@@ -2923,7 +2520,6 @@
             
             isEditingEnabled = true;
             currentTool = 'edit';
-            routeFeature = routeFeatures[0];
             
             document.getElementById('enableEdit').style.display = 'none';
             document.getElementById('disableEdit').style.display = 'inline-flex';
@@ -2951,57 +2547,110 @@
             showStatus('Route editing disabled', 'info');
         }
 
-        // ==================== SAVE ROUTE TO DATABASE ====================
-        document.getElementById('saveRoute').addEventListener('click', function() {
-            if (!routeFeature) {
-                showStatus('No route to save', 'error');
-                return;
-            }
-
-            const geometry = routeFeature.getGeometry();
-            const coordinates = geometry.getCoordinates();
-            const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
-            
-            // Extract distance from route info
-            const routeDetails = document.getElementById('routeDetails').innerHTML;
-            const distanceMatch = routeDetails.match(/Total Distance:\s*([0-9.]+)/);
-            const totalDistance = distanceMatch ? parseFloat(distanceMatch[1]) : 0;
-            
-            const routeData = {
-                name: `Route ${$('#departureSelect').val()} to ${$('#arrivalSelect').val()}`,
-                departure: $('#departureSelect').val(),
-                arrival: $('#arrivalSelect').val(),
-                waypoints: [],
-                coordinates: lonLatCoordinates,
-                total_distance: totalDistance,
-                cruise_altitude: 35000
-            };
-
-            console.log('Saving route:', routeData);
-
-            fetch('/api/save-route/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: JSON.stringify(routeData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Save response:', data);
-                if (data.status === 'success') {
-                    showStatus(`Route saved successfully! ID: ${data.route_id}`, 'success');
-                    loadSavedRoutes();
-                } else {
-                    showStatus('Error saving route: ' + (data.message || 'Unknown error'), 'error');
+        // ==================== SAVE ROUTE ====================
+        function saveCurrentRoute(isSaveAs = false) {
+            try {
+                console.log('💾 Saving route...', { isSaveAs });
+                
+                // Get latest route feature from layer
+                const routeFeatures = routeLayer.getSource().getFeatures();
+                if (routeFeatures.length === 0) {
+                    showStatus('❌ No route to save', 'error');
+                    return;
                 }
-            })
-            .catch(error => {
-                console.error('Save error:', error);
-                showStatus('Error saving route: ' + error, 'error');
-            });
-        });
+                
+                const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+                if (!latestRouteFeature) {
+                    showStatus('❌ Route feature not found', 'error');
+                    return;
+                }
+                
+                // Get geometry and coordinates
+                const geometry = latestRouteFeature.getGeometry();
+                if (!geometry) {
+                    showStatus('❌ Route has no geometry', 'error');
+                    return;
+                }
+                
+                const coordinates = geometry.getCoordinates();
+                const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
+                
+                console.log('📐 Coordinates count:', lonLatCoordinates.length);
+                
+                // Calculate distance from edited coordinates
+                let totalDistance = 0;
+                for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
+                    const coord1 = lonLatCoordinates[i];
+                    const coord2 = lonLatCoordinates[i + 1];
+                    totalDistance += calculateDistance(coord1, coord2);
+                }
+                
+                // Get departure/arrival
+                const departure = $('#departureSelect').val();
+                const arrival = $('#arrivalSelect').val();
+                
+                if (!departure || !arrival) {
+                    showStatus('❌ Please select departure and arrival airports', 'error');
+                    return;
+                }
+                
+                // Prepare route data
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const routeData = {
+                    name: isSaveAs 
+                        ? `${departure}-${arrival}-${timestamp}`
+                        : `Route ${departure} to ${arrival}`,
+                    departure: departure,
+                    arrival: arrival,
+                    waypoints: [],
+                    coordinates: lonLatCoordinates,
+                    total_distance: parseFloat(totalDistance.toFixed(2)),
+                    flight_time: calculateFlightTime(totalDistance),
+                    description: isSaveAs 
+                        ? `Saved as copy on ${new Date().toLocaleString()}`
+                        : `Edited route saved on ${new Date().toLocaleString()}`
+                };
+                
+                console.log('📤 Route data to save:', routeData);
+                
+                // Determine API endpoint
+                const apiUrl = isSaveAs ? '/api/save-route-as/' : '/api/save-route/';
+                
+                // Send to server
+                fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify(routeData)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('✅ Save response:', data);
+                    if (data.status === 'success') {
+                        const action = isSaveAs ? 'saved as new copy' : 'saved';
+                        showStatus(`✅ Route ${action} successfully! ID: ${data.route_id || data.route_id}`, 'success');
+                        loadSavedRoutes();
+                    } else {
+                        showStatus(`❌ Error: ${data.message}`, 'error');
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Save error:', error);
+                    showStatus(`❌ Save failed: ${error.message}`, 'error');
+                });
+                
+            } catch (error) {
+                console.error('❌ Error in saveCurrentRoute:', error);
+                showStatus(`❌ Save error: ${error.message}`, 'error');
+            }
+        }
 
         // ==================== LOAD SAVED ROUTES ====================
         function loadSavedRoutes() {
@@ -3046,7 +2695,7 @@
                         <div class="route-item-header">
                             <strong>${route.name || `Route ${route.departure} to ${route.arrival}`}</strong>
                             <div class="route-item-actions">
-                                <button class="action-btn btn-primary" onclick="loadRouteFromList(${route.id})">
+                                <button class="action-btn btn-primary" onclick="window.loadRouteFromList(${route.id})">
                                     <i class="fas fa-eye"></i> Load
                                 </button>
                                 <button class="action-btn btn-danger" onclick="deleteRoute(${route.id})">
@@ -3181,7 +2830,6 @@
             
             showStatus(`Searching for: ${searchTerm}...`, 'info');
             
-            // 1. اول airports رو سرچ کن
             fetch('/api/airports/')
                 .then(response => response.json())
                 .then(data => {
@@ -3202,7 +2850,6 @@
                             duration: 1000
                         });
                         
-                        // روشن کردن لایه waypoints همزمان
                         waypointLayer.setVisible(true);
                         document.getElementById('toggleWaypoints').checked = true;
                         sessionStorage.setItem('toggleWaypoints', 'true');
@@ -3211,11 +2858,10 @@
                         return Promise.reject('AIRPORT_FOUND');
                     }
                     
-                    // 2. اگر airport پیدا نشد، FIRها رو سرچ کن
                     return fetch('/api/fir-geojson/');
                 })
                 .then(response => {
-                    if (!response) return; // اگر قبلاً airport پیدا شده بود
+                    if (!response) return;
                     
                     return response.json().then(firData => {
                         if (!firData || !firData.features) {
@@ -3240,7 +2886,6 @@
                             const result = firResults[0];
                             console.log('Found FIR:', result.properties.identifier);
                             
-                            // ========== محاسبه Extent (محدوده) FIR ==========
                             try {
                                 if (result.geometry && result.geometry.coordinates) {
                                     const extent = calculateFIRExtent(result.geometry);
@@ -3248,7 +2893,6 @@
                                     if (extent && extent.length === 4) {
                                         console.log('FIR Extent calculated:', extent);
                                         
-                                        // تبدیل extent به مختصات OpenLayers
                                         const minLon = extent[0];
                                         const minLat = extent[1];
                                         const maxLon = extent[2];
@@ -3259,25 +2903,20 @@
                                             ol.proj.fromLonLat([maxLon, maxLat])
                                         ].flat();
                                         
-                                        // زوم کردن به کل محدوده FIR با padding
                                         map.getView().fit(olExtent, {
-                                            padding: [50, 50, 50, 50], // padding از همه طرف
+                                            padding: [50, 50, 50, 50],
                                             duration: 1000,
-                                            maxZoom: 8 // حداکثر زوم برای FIRها
+                                            maxZoom: 8
                                         });
                                         
-                                        // ========== روشن کردن هر دو لایه ==========
-                                        // لایه FIR
                                         firLayer.setVisible(true);
                                         document.getElementById('toggleFIR').checked = true;
                                         sessionStorage.setItem('toggleFIR', 'true');
                                         
-                                        // لایه Waypoints
                                         waypointLayer.setVisible(true);
                                         document.getElementById('toggleWaypoints').checked = true;
                                         sessionStorage.setItem('toggleWaypoints', 'true');
                                         
-                                        // ========== Highlight کردن FIR پیدا شده ==========
                                         highlightFIR(result.properties.identifier);
                                         
                                         showStatus(`Found FIR: ${result.properties.identifier} - ${result.properties.name} (Both layers ON)`, 'success');
@@ -3288,14 +2927,12 @@
                                 console.error('Error calculating FIR extent:', e);
                             }
                             
-                            // اگر نتوانستیم extent رو محاسبه کنیم، به مرکز تهران زوم کن
                             map.getView().animate({
                                 center: ol.proj.fromLonLat([51.3890, 35.6892]),
                                 zoom: 6,
                                 duration: 1000
                             });
                             
-                            // باز هم لایه‌ها رو روشن کن
                             firLayer.setVisible(true);
                             document.getElementById('toggleFIR').checked = true;
                             sessionStorage.setItem('toggleFIR', 'true');
@@ -3310,12 +2947,11 @@
                             return Promise.reject('FIR_FOUND');
                         }
                         
-                        // 3. اگر FIR هم پیدا نشد، waypoints رو سرچ کن
                         return fetch('/api/waypoints/');
                     });
                 })
                 .then(response => {
-                    if (!response) return; // قبلاً نتیجه پیدا شده
+                    if (!response) return;
                     
                     return response.json().then(data => {
                         if (!data || !data.features) {
@@ -3342,7 +2978,6 @@
                                 duration: 1000
                             });
                             
-                            // روشن کردن لایه waypoints
                             waypointLayer.setVisible(true);
                             document.getElementById('toggleWaypoints').checked = true;
                             sessionStorage.setItem('toggleWaypoints', 'true');
@@ -3351,13 +2986,11 @@
                             return;
                         }
                         
-                        // اگر هیچ چیز پیدا نشد
                         showStatus('No results found for: ' + searchTerm, 'error');
                     });
                 })
                 .catch(error => {
                     if (error === 'AIRPORT_FOUND' || error === 'FIR_FOUND') {
-                        // این error نیست، فقط برای کنترل flow هست
                         return;
                     }
                     console.error('Search error:', error);
@@ -3365,7 +2998,6 @@
                 });
         });
 
-        // ========== تابع کمکی برای محاسبه Extent FIR ==========
         function calculateFIRExtent(geometry) {
             if (!geometry || !geometry.coordinates) return null;
             
@@ -3377,13 +3009,10 @@
             try {
                 const processCoordinates = (coords) => {
                     if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-                        // چندضلعی یا چندخطی
                         coords.forEach(ring => processCoordinates(ring));
                     } else if (Array.isArray(coords[0])) {
-                        // خط
                         coords.forEach(coord => processCoordinates(coord));
                     } else if (coords.length >= 2) {
-                        // نقطه
                         const lon = coords[0];
                         const lat = coords[1];
                         
@@ -3396,8 +3025,7 @@
                 
                 processCoordinates(geometry.coordinates);
                 
-                // اضافه کردن margin کوچک
-                const margin = 0.5; // درجه
+                const margin = 0.5;
                 return [
                     minLon - margin,
                     minLat - margin,
@@ -3411,12 +3039,10 @@
             }
         }
 
-        // ========== تابع کمکی برای Highlight کردن FIR ==========
         function highlightFIR(firIdentifier) {
             const source = firLayer.getSource();
             const features = source.getFeatures();
             
-            // اول همه رو به style اصلی برگردون
             features.forEach(feature => {
                 const type = feature.getGeometry().getType();
                 
@@ -3442,7 +3068,6 @@
                 }
             });
             
-            // حالا FIR پیدا شده رو highlight کن
             features.forEach(feature => {
                 if (feature.get('identifier') === firIdentifier) {
                     feature.setStyle(new ol.style.Style({
@@ -3521,24 +3146,33 @@
         document.getElementById('swapSearchInputs').addEventListener('click', swapSearchInputs);
         document.getElementById('executeRouteSearch').addEventListener('click', executeRouteSearch);
 
-        // Enter key to submit search
         document.getElementById('searchOrigin').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                document.getElementById('executeRouteSearch').click();
+                executeRouteSearch();
             }
         });
 
         document.getElementById('searchDestination').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
-                document.getElementById('executeRouteSearch').click();
+                executeRouteSearch();
             }
         });
 
-        // Close modal when clicking outside
         document.getElementById('routeSearchModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeRouteSearchModal();
             }
+        });
+
+        // ==================== SAVE ROUTE EVENT LISTENERS ====================
+        document.getElementById('saveRoute').addEventListener('click', function() {
+            console.log('💾 Save Route clicked');
+            saveCurrentRoute(false);
+        });
+
+        document.getElementById('saveRouteAs').addEventListener('click', function() {
+            console.log('💾 Save As clicked');
+            saveCurrentRoute(true);
         });
 
         // ==================== LAYER CONTROLS ====================
@@ -3580,17 +3214,14 @@
             const resizeHandle = document.getElementById('resizeHandle');
             const mapContainer = document.querySelector('.map-container');
             
-            // ایجاد دکمه collapse
             const collapseBtn = document.createElement('div');
             collapseBtn.className = 'collapse-btn';
             collapseBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
             sidebar.appendChild(collapseBtn);
             
-            // وضعیت اولیه
             let isResizing = false;
             let startX, startWidth;
             
-            // ===== RESIZE FUNCTIONALITY =====
             function initResize(e) {
                 isResizing = true;
                 startX = e.clientX;
@@ -3622,27 +3253,22 @@
                 document.removeEventListener('mousemove', resize);
                 document.removeEventListener('mouseup', stopResize);
                 
-                // ذخیره اندازه
                 localStorage.setItem('sidebarWidth', sidebar.style.width);
                 
-                // Update map size
                 setTimeout(() => {
                     map.updateSize();
                 }, 100);
             }
             
-            // ===== COLLAPSE/EXPAND FUNCTIONALITY =====
             collapseBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
                 
                 if (sidebar.classList.contains('collapsed')) {
-                    // Expand
                     sidebar.classList.remove('collapsed');
                     sidebar.style.width = localStorage.getItem('sidebarWidth') || '320px';
                     collapseBtn.innerHTML = '<i class="fas fa-chevron-left"></i>';
                     localStorage.setItem('sidebarCollapsed', 'false');
                 } else {
-                    // Collapse
                     sidebar.classList.add('collapsed');
                     localStorage.setItem('sidebarWidth', sidebar.style.width);
                     sidebar.style.width = '50px';
@@ -3655,10 +3281,8 @@
                 }, 300);
             });
             
-            // ===== EVENT LISTENERS =====
             resizeHandle.addEventListener('mousedown', initResize);
             
-            // لود اندازه ذخیره شده
             const savedWidth = localStorage.getItem('sidebarWidth');
             const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
             
@@ -3672,12 +3296,10 @@
                 collapseBtn.innerHTML = '<i class="fas fa-chevron-right"></i>';
             }
             
-            // دبل کلیک روی handle برای collapse/expand
             resizeHandle.addEventListener('dblclick', function() {
                 collapseBtn.click();
             });
             
-            // برای تاچ اسکرین
             resizeHandle.addEventListener('touchstart', function(e) {
                 e.preventDefault();
                 initResize(e.touches[0]);
@@ -3714,19 +3336,20 @@
                     dropdownParent: $('.sidebar')
                 });
                 
-                console.log('Airports loaded:', data.features.length);
+                console.log('✅ Airports loaded:', data.features.length);
             })
             .catch(error => {
-                console.error('Error loading airports:', error);
+                console.error('❌ Error loading airports:', error);
                 showStatus('Error loading airports data', 'error');
             });
 
-        // Initialize
+        // ==================== FINAL INIT ====================
         initLayerControls();
         activateTool('select');
         loadSavedRoutes();
         
-        console.log('FlightFuel Application Initialized');
+        console.log('✅ FlightFuel Application Fully Initialized');
+        showStatus('FlightFuel ready! Try searching routes with IATA (THR) or ICAO (OIII) codes.', 'success');
     </script>
 </body>
 </html>
