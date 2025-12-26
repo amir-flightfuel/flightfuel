@@ -8,1094 +8,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@8.2.0/ol.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary-blue: #1a73e8;
-            --dark-blue: #0d47a1;
-            --light-blue: #e8f0fe;
-            --accent-red: #ea4335;
-            --accent-green: #34a853;
-            --accent-yellow: #fbbc05;
-            --gray-bg: #f5f5f5;
-            --gray-light: #f8f9fa;
-            --gray-medium: #dadce0;
-            --gray-dark: #5f6368;
-            --text-dark: #202124;
-            --text-light: #5f6368;
-            --white: #ffffff;
-            --shadow-sm: 0 1px 3px rgba(0,0,0,0.12);
-            --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
-            --shadow-lg: 0 10px 25px rgba(0,0,0,0.1);
-            --border-radius: 8px;
-            --border-radius-sm: 4px;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--gray-bg);
-            color: var(--text-dark);
-            overflow: hidden;
-        }
-
-        .top-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 60px;
-            background: var(--white);
-            box-shadow: var(--shadow-md);
-            display: flex;
-            align-items: center;
-            padding: 0 20px;
-            z-index: 1000;
-            border-bottom: 1px solid var(--gray-medium);
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--primary-blue);
-            margin-right: 40px;
-        }
-
-        .logo i {
-            font-size: 28px;
-        }
-
-        .search-container {
-            flex: 1;
-            max-width: 500px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        .search-box {
-            flex: 1;
-            position: relative;
-        }
-
-        .search-box input {
-            width: 100%;
-            padding: 10px 16px 10px 45px;
-            border: 1px solid var(--gray-medium);
-            border-radius: 24px;
-            font-size: 14px;
-            outline: none;
-            transition: all 0.3s;
-        }
-
-        .search-box input:focus {
-            border-color: var(--primary-blue);
-            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--gray-dark);
-            font-size: 16px;
-        }
-
-        .search-btn {
-            padding: 10px 20px;
-            background: var(--primary-blue);
-            color: white;
-            border: none;
-            border-radius: 24px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.3s;
-        }
-
-        .search-btn:hover {
-            background: var(--dark-blue);
-            transform: translateY(-1px);
-        }
-
-        .app-container {
-            display: flex;
-            height: 100vh;
-            padding-top: 60px;
-        }
-
-        /* ==================== SIDEBAR ==================== */
-        .sidebar {
-            width: 320px;
-            min-width: 250px;
-            max-width: 500px;
-            background: var(--white);
-            border-right: 1px solid var(--gray-medium);
-            display: flex;
-            flex-direction: column;
-            overflow-y: auto;
-            padding: 20px;
-            box-shadow: var(--shadow-sm);
-            z-index: 900;
-            position: relative;
-            resize: horizontal;
-            overflow: auto;
-        }
-
-        .resize-handle {
-            position: absolute;
-            right: -5px;
-            top: 0;
-            bottom: 0;
-            width: 10px;
-            cursor: col-resize;
-            z-index: 1000;
-            background: transparent;
-            transition: background 0.2s;
-        }
-
-        .resize-handle:hover,
-        .resize-handle.resizing {
-            background: rgba(26, 115, 232, 0.3);
-        }
-
-        .resize-handle::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 2px;
-            transform: translateY(-50%);
-            width: 6px;
-            height: 40px;
-            background: var(--primary-blue);
-            border-radius: 3px;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .resize-handle:hover::after,
-        .resize-handle.resizing::after {
-            opacity: 1;
-        }
-
-        .resizing {
-            user-select: none;
-        }
-
-        .sidebar::-webkit-resizer {
-            display: none;
-        }
-
-        .sidebar.collapsed {
-            width: 50px;
-            min-width: 50px;
-            padding: 20px 10px;
-        }
-
-        .sidebar.collapsed .sidebar-content {
-            opacity: 0;
-            pointer-events: none;
-            overflow: hidden;
-        }
-
-        .sidebar.collapsed .resize-handle {
-            display: none;
-        }
-
-        .collapse-btn {
-            position: absolute;
-            right: -15px;
-            top: 20px;
-            width: 30px;
-            height: 30px;
-            background: var(--primary-blue);
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            z-index: 910;
-            transition: all 0.3s ease;
-            box-shadow: var(--shadow-sm);
-            border: 2px solid var(--white);
-        }
-
-        .collapse-btn:hover {
-            background: var(--dark-blue);
-            transform: scale(1.1);
-        }
-
-        .collapse-btn i {
-            font-size: 14px;
-            transition: transform 0.3s ease;
-        }
-
-        .sidebar.collapsed .collapse-btn i {
-            transform: rotate(180deg);
-        }
-
-        .sidebar:hover .resize-handle::after {
-            opacity: 0.5;
-        }
-
-        .sidebar-content {
-            flex: 1;
-            overflow-y: auto;
-        }
-
-        .sidebar-section {
-            margin-bottom: 24px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid var(--gray-medium);
-        }
-
-        .sidebar-section:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-        }
-
-        .section-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-dark);
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .section-title i {
-            color: var(--primary-blue);
-        }
-
-        .map-container {
-            flex: 1;
-            position: relative;
-            background: #e9eef2;
-        }
-
-        #map {
-            width: 100%;
-            height: 100%;
-        }
-
-        .map-controls {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            z-index: 800;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .control-group {
-            background: var(--white);
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow-md);
-            overflow: hidden;
-            border: 1px solid var(--gray-medium);
-        }
-
-        .control-btn {
-            width: 40px;
-            height: 40px;
-            border: none;
-            background: var(--white);
-            color: var(--text-dark);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            transition: all 0.2s;
-        }
-
-        .control-btn:hover {
-            background: var(--light-blue);
-            color: var(--primary-blue);
-        }
-
-        .control-btn.active {
-            background: var(--primary-blue);
-            color: var(--white);
-        }
-
-        .control-btn:not(:last-child) {
-            border-bottom: 1px solid var(--gray-medium);
-        }
-
-        .fir-tooltip, .wp-tooltip {
-            position: absolute;
-            padding: 12px;
-            border-radius: var(--border-radius-sm);
-            font-size: 13px;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            white-space: nowrap;
-            pointer-events: none;
-            z-index: 1000;
-            box-shadow: var(--shadow-lg);
-            max-width: 300px;
-            min-width: 200px;
-        }
-
-        .fir-tooltip {
-            background: rgba(234, 67, 53, 0.95);
-            color: var(--white);
-            border: 2px solid var(--white);
-        }
-
-        .wp-tooltip {
-            background: rgba(32, 33, 36, 0.95);
-            color: var(--white);
-            border: 2px solid var(--primary-blue);
-        }
-
-        .tooltip-arrow {
-            content: '';
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            margin-left: -6px;
-            border-width: 6px;
-            border-style: solid;
-            border-color: inherit;
-            border-top-color: transparent;
-            border-left-color: transparent;
-            border-right-color: transparent;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-dark);
-            margin-bottom: 6px;
-        }
-
-        .airport-select {
-            width: 100% !important;
-        }
-
-        .select2-container--default .select2-selection--single {
-            height: 42px;
-            border: 1px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-        }
-
-        .select2-container--default .select2-selection--single .select2-selection__rendered {
-            line-height: 42px;
-            padding-left: 12px;
-        }
-
-        .select2-container--default .select2-selection--single .select2-selection__arrow {
-            height: 42px;
-        }
-
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: var(--border-radius-sm);
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
-            background: var(--primary-blue);
-            color: var(--white);
-        }
-
-        .btn-primary:hover {
-            background: var(--dark-blue);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
-        }
-
-        .btn-secondary {
-            background: var(--gray-light);
-            color: var(--text-dark);
-            border: 1px solid var(--gray-medium);
-        }
-
-        .btn-secondary:hover {
-            background: var(--gray-medium);
-        }
-
-        .btn-success {
-            background: var(--accent-green);
-            color: var(--white);
-        }
-
-        .btn-success:hover {
-            background: #2e8b57;
-        }
-
-        .btn-danger {
-            background: var(--accent-red);
-            color: var(--white);
-        }
-
-        .btn-danger:hover {
-            background: #c82333;
-        }
-
-        .btn-warning {
-            background: var(--accent-yellow);
-            color: var(--text-dark);
-        }
-
-        .btn-warning:hover {
-            background: #e0a800;
-        }
-
-        .btn-group {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .mode-buttons {
-            display: flex;
-            gap: 10px;
-            margin: 15px 0;
-        }
-
-        .mode-btn {
-            flex: 1;
-            padding: 10px;
-            border: 2px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-            background: var(--white);
-            color: var(--text-dark);
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .mode-btn.active {
-            border-color: var(--primary-blue);
-            background: var(--primary-blue);
-            color: var(--white);
-            box-shadow: var(--shadow-sm);
-        }
-
-        .layer-controls-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-
-        .layer-control {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px;
-            background: var(--gray-light);
-            border-radius: var(--border-radius-sm);
-            border: 1px solid var(--gray-medium);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .layer-control:hover {
-            background: var(--light-blue);
-            border-color: var(--primary-blue);
-        }
-
-        .layer-control input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
-
-        .layer-control label {
-            cursor: pointer;
-            font-size: 14px;
-            color: var(--text-dark);
-            flex: 1;
-        }
-
-        .route-info-panel {
-            background: var(--light-blue);
-            border-radius: var(--border-radius);
-            padding: 16px;
-            border: 1px solid var(--primary-blue);
-            margin-top: 20px;
-            display: none;
-        }
-
-        .route-info-panel.active {
-            display: block;
-            animation: slideIn 0.3s ease;
-        }
-
-        .route-details {
-            margin-top: 12px;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        .route-details strong {
-            color: var(--primary-blue);
-        }
-
-        .edit-tools {
-            background: var(--gray-light);
-            border-radius: var(--border-radius);
-            padding: 16px;
-            border: 1px solid var(--gray-medium);
-            margin-top: 20px;
-            display: none;
-        }
-
-        .edit-tools.active {
-            display: block;
-            animation: slideIn 0.3s ease;
-        }
-
-        .import-section {
-            background: var(--gray-light);
-            border-radius: var(--border-radius);
-            padding: 16px;
-            border: 1px solid var(--gray-medium);
-        }
-
-        .import-section textarea {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            resize: vertical;
-            margin-bottom: 12px;
-        }
-
-        .saved-routes-list {
-            max-height: 300px;
-            overflow-y: auto;
-            margin-top: 12px;
-        }
-
-        .route-item {
-            background: var(--white);
-            border: 1px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-            padding: 12px;
-            margin-bottom: 8px;
-            transition: all 0.2s;
-        }
-
-        .route-item:hover {
-            border-color: var(--primary-blue);
-            box-shadow: var(--shadow-sm);
-        }
-
-        .route-item-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .route-item-actions {
-            display: flex;
-            gap: 6px;
-        }
-
-        .action-btn {
-            padding: 4px 10px;
-            font-size: 12px;
-            border-radius: 3px;
-        }
-
-        /* ==================== ROUTE SEARCH MODAL ==================== */
-        .route-search-modal {
-            display: none;
-            position: fixed;
-            z-index: 1100;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            animation: fadeIn 0.3s ease;
-        }
-
-        .route-search-modal.active {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .route-search-content {
-            background-color: var(--white);
-            padding: 30px;
-            border-radius: var(--border-radius);
-            width: 90%;
-            max-width: 500px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: var(--shadow-lg);
-            border: 1px solid var(--gray-medium);
-            animation: slideUp 0.3s ease;
-        }
-
-        .route-search-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid var(--primary-blue);
-        }
-
-        .route-search-header h2 {
-            color: var(--primary-blue);
-            font-size: 22px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .close-search-modal {
-            background: none;
-            border: none;
-            font-size: 28px;
-            color: var(--gray-dark);
-            cursor: pointer;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            transition: all 0.2s;
-        }
-
-        .close-search-modal:hover {
-            background-color: var(--gray-light);
-            color: var(--accent-red);
-        }
-
-        .search-form {
-            margin-bottom: 25px;
-        }
-
-        .search-input-group {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .search-input {
-            flex: 1;
-            padding: 12px 15px;
-            border: 2px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-            font-size: 15px;
-            transition: all 0.3s;
-        }
-
-        .search-input:focus {
-            border-color: var(--primary-blue);
-            box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
-            outline: none;
-        }
-
-        .search-input::placeholder {
-            color: var(--gray-dark);
-        }
-
-        .search-swap-btn {
-            background: var(--gray-light);
-            border: 2px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .search-swap-btn:hover {
-            background: var(--gray-medium);
-            transform: rotate(180deg);
-        }
-
-        .search-submit-btn {
-            width: 100%;
-            padding: 14px;
-            background: var(--primary-blue);
-            color: white;
-            border: none;
-            border-radius: var(--border-radius-sm);
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            transition: all 0.3s;
-        }
-
-        .search-submit-btn:hover {
-            background: var(--dark-blue);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-md);
-        }
-
-        .search-submit-btn:disabled {
-            background: var(--gray-medium);
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        .search-results-container {
-            margin-top: 25px;
-            max-height: 400px;
-            overflow-y: auto;
-            border: 1px solid var(--gray-medium);
-            border-radius: var(--border-radius);
-            padding: 15px;
-            background: var(--gray-light);
-        }
-
-        .search-results-header {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-dark);
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--gray-medium);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .results-count {
-            background: var(--primary-blue);
-            color: white;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 30px 20px;
-            color: var(--text-light);
-        }
-
-        .no-results i {
-            font-size: 48px;
-            margin-bottom: 15px;
-            color: var(--gray-medium);
-        }
-
-        .no-results h4 {
-            font-size: 18px;
-            margin-bottom: 10px;
-            color: var(--text-dark);
-        }
-
-        .no-results p {
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        .route-result-item {
-            background: var(--white);
-            border: 1px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-            padding: 15px;
-            margin-bottom: 12px;
-            transition: all 0.3s;
-        }
-
-        .route-result-item:hover {
-            border-color: var(--primary-blue);
-            box-shadow: var(--shadow-sm);
-            transform: translateX(5px);
-        }
-
-        .route-result-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .route-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--primary-blue);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .route-icao {
-            background: var(--light-blue);
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-        }
-
-        .route-distance {
-            background: var(--accent-green);
-            color: white;
-            padding: 4px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .route-details-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            margin-bottom: 12px;
-            font-size: 13px;
-        }
-
-        .route-detail-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            color: var(--text-light);
-        }
-
-        .route-detail-item strong {
-            color: var(--text-dark);
-        }
-
-        .route-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        .load-route-btn {
-            flex: 1;
-            padding: 8px 15px;
-            background: var(--primary-blue);
-            color: white;
-            border: none;
-            border-radius: var(--border-radius-sm);
-            font-size: 13px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            transition: all 0.2s;
-        }
-
-        .load-route-btn:hover {
-            background: var(--dark-blue);
-        }
-
-        .view-details-btn {
-            padding: 8px 15px;
-            background: var(--gray-light);
-            color: var(--text-dark);
-            border: 1px solid var(--gray-medium);
-            border-radius: var(--border-radius-sm);
-            font-size: 13px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s;
-        }
-
-        .view-details-btn:hover {
-            background: var(--gray-medium);
-        }
-
-        .loading-spinner {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .loading-spinner.active {
-            display: block;
-        }
-
-        .spinner {
-            border: 3px solid var(--gray-light);
-            border-top: 3px solid var(--primary-blue);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
-
-        .status-message {
-            padding: 10px 14px;
-            border-radius: var(--border-radius-sm);
-            margin-top: 12px;
-            font-size: 14px;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .status-info {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
-        }
-
-        .status-success {
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
-        }
-
-        .status-error {
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            color: #721c24;
-        }
-
-        .cursor-crosshair {
-            cursor: crosshair !important;
-        }
-
-        .cursor-grab {
-            cursor: grab !important;
-        }
-
-        .cursor-grabbing {
-            cursor: grabbing !important;
-        }
-
-        @media (max-width: 1200px) {
-            .sidebar {
-                width: 280px;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .app-container {
-                flex-direction: column;
-            }
-            
-            .sidebar {
-                width: 100%;
-                height: 300px;
-                border-right: none;
-                border-bottom: 1px solid var(--gray-medium);
-            }
-            
-            .map-controls {
-                top: 10px;
-                right: 10px;
-            }
-            
-            .sidebar {
-                resize: none;
-            }
-            
-            .resize-handle {
-                display: none;
-            }
-            
-            .collapse-btn {
-                display: none;
-            }
-
-            .route-search-content {
-                width: 95%;
-                padding: 20px;
-            }
-
-            .search-input-group {
-                flex-direction: column;
-                gap: 10px;
-            }
-
-            .search-swap-btn {
-                transform: rotate(90deg);
-            }
-
-            .route-details-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .route-actions {
-                flex-direction: column;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="{% static 'css/base.css' %}">
 </head>
 <body>
     <!-- TOP BAR -->
@@ -1517,26 +430,28 @@
         });
         map.addLayer(routeLayer);
 
-        // ==================== TOOLTIPS ====================
-        const firTooltipElement = document.createElement('div');
-        firTooltipElement.className = 'fir-tooltip';
-        const firTooltipOverlay = new ol.Overlay({
-            element: firTooltipElement,
-            positioning: 'bottom-center',
-            offset: [0, -10],
-            stopEvent: false
-        });
-        map.addOverlay(firTooltipOverlay);
+// ==================== TOOLTIPS ====================
+const firTooltipElement = document.createElement('div');
+firTooltipElement.className = 'fir-tooltip';
+const firTooltipOverlay = new ol.Overlay({
+    element: firTooltipElement,
+    positioning: 'bottom-center',
+    offset: [0, -10],
+    stopEvent: false
+});
+map.addOverlay(firTooltipOverlay);
 
-        const wpTooltipElement = document.createElement('div');
-        wpTooltipElement.className = 'wp-tooltip';
-        const wpTooltipOverlay = new ol.Overlay({
-            element: wpTooltipElement,
-            positioning: 'bottom-center',
-            offset: [0, -15],
-            stopEvent: false
-        });
-        map.addOverlay(wpTooltipOverlay);
+const wpTooltipElement = document.createElement('div');
+wpTooltipElement.className = 'wp-tooltip';
+const wpTooltipOverlay = new ol.Overlay({
+    element: wpTooltipElement,
+    positioning: 'bottom-center',
+    offset: [0, -15],
+    stopEvent: false
+});
+map.addOverlay(wpTooltipOverlay);
+// Route Tooltip اینجا اضافه نمی‌شود - بعداً به صورت lazy ایجاد می‌شود
+        
 
         // ==================== MAP INTERACTIONS ====================
         let modifyInteraction = null;
@@ -2047,65 +962,67 @@
                 });
         }
 
-        function loadRouteOnMap(route) {
-            routeLayer.getSource().clear();
-            
-            if (!route.coordinates || !Array.isArray(route.coordinates)) {
-                showStatus('Error: Route has no valid coordinates data', 'error');
-                return;
-            }
-            
-            let coordinatesData = route.coordinates;
-            if (typeof coordinatesData === 'string') {
-                try {
-                    coordinatesData = JSON.parse(coordinatesData);
-                } catch (e) {
-                    console.error('Failed to parse coordinates:', e);
-                    showStatus('Error: Invalid coordinates format', 'error');
-                    return;
-                }
-            }
-            
-            if (!Array.isArray(coordinatesData)) {
-                showStatus('Error: Coordinates is not an array', 'error');
-                return;
-            }
-            
-            const coordinates = coordinatesData.map(coord => {
-                if (Array.isArray(coord) && coord.length >= 2) {
-                    return ol.proj.fromLonLat([coord[0], coord[1]]);
-                }
-                return ol.proj.fromLonLat([0, 0]);
-            }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
-            
-            if (coordinates.length < 2) {
-                showStatus('Error: Route has insufficient valid coordinates', 'error');
-                return;
-            }
-            
-            routeFeature = new ol.Feature({
-                geometry: new ol.geom.LineString(coordinates),
-                properties: {
-                    departure: route.departure,
-                    arrival: route.arrival,
-                    name: route.name
-                }
-            });
-            
-            routeLayer.getSource().addFeature(routeFeature);
-            routeLayer.setVisible(true);
-            document.getElementById('toggleRoute').checked = true;
-            sessionStorage.setItem('toggleRoute', 'true');
-            
-            updateRouteInfoForSavedRoute(route);
-            document.getElementById('routeInfo').classList.add('active');
-            
-            $('#departureSelect').val(route.departure).trigger('change');
-            $('#arrivalSelect').val(route.arrival).trigger('change');
-            
-            zoomToRoute(coordinates);
+function loadRouteOnMap(route) {
+    console.log('🔍 لود کردن Route:', route); // این خط لاگ می‌اندازد
+    
+    routeLayer.getSource().clear();
+    
+    if (!route.coordinates || !Array.isArray(route.coordinates)) {
+        showStatus('Error: Route has no valid coordinates data', 'error');
+        return;
+    }
+    
+    let coordinatesData = route.coordinates;
+    if (typeof coordinatesData === 'string') {
+        try {
+            coordinatesData = JSON.parse(coordinatesData);
+        } catch (e) {
+            console.error('Failed to parse coordinates:', e);
+            showStatus('Error: Invalid coordinates format', 'error');
+            return;
         }
-
+    }
+    
+    if (!Array.isArray(coordinatesData)) {
+        showStatus('Error: Coordinates is not an array', 'error');
+        return;
+    }
+    
+    const coordinates = coordinatesData.map(coord => {
+        if (Array.isArray(coord) && coord.length >= 2) {
+            return ol.proj.fromLonLat([coord[0], coord[1]]);
+        }
+        return ol.proj.fromLonLat([0, 0]);
+    }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
+    
+    if (coordinates.length < 2) {
+        showStatus('Error: Route has insufficient valid coordinates', 'error');
+        return;
+    }
+    
+    // ساخت Feature با نام واقعی
+    routeFeature = new ol.Feature({
+        geometry: new ol.geom.LineString(coordinates),
+        name: route.name || `Route ${route.departure} to ${route.arrival}`,
+        departure: route.departure,
+        arrival: route.arrival
+    });
+    
+    console.log('✅ Feature ساخته شد با نام:', routeFeature.get('name')); // این هم لاگ می‌اندازد
+    
+    routeLayer.getSource().addFeature(routeFeature);
+    routeLayer.setVisible(true);
+    document.getElementById('toggleRoute').checked = true;
+    sessionStorage.setItem('toggleRoute', 'true');
+    
+    updateRouteInfoForSavedRoute(route);
+    document.getElementById('routeInfo').classList.add('active');
+    
+    $('#departureSelect').val(route.departure).trigger('change');
+    $('#arrivalSelect').val(route.arrival).trigger('change');
+    
+    zoomToRoute(coordinates);
+}
         function updateRouteInfo() {
             if (routeFeature) {
                 const geometry = routeFeature.getGeometry();
@@ -2160,106 +1077,7 @@
             }
         }
 
-        // ==================== TOOLTIP HANDLING ====================
-        map.on('pointermove', function(event) {
-            const pixel = map.getEventPixel(event.originalEvent);
-            
-            firTooltipOverlay.setPosition(undefined);
-            wpTooltipOverlay.setPosition(undefined);
-            map.getTarget().style.cursor = '';
-            
-            let feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
-                if (layer === firLayer) {
-                    return feature;
-                }
-                return null;
-            });
-            
-            if (feature) {
-                const props = feature.getProperties();
-                const tooltipText = `
-                    <div style="text-align: left;">
-                        <strong style="font-size: 14px;">FIR: ${props.identifier || 'N/A'}</strong><br>
-                        <span style="color: #ffcc00;">${props.name || 'N/A'}</span><br>
-                        <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
-                        <strong>Country:</strong> ${props.country || 'N/A'}<br>
-                        <strong>Frequency:</strong> ${props.frequency || 'N/A'}<br>
-                        <strong>Altitude:</strong> ${props.lower_limit || '0'}-${props.upper_limit || '99999'} ft<br>
-                        <strong>ICAO Region:</strong> ${props.icao_region || 'N/A'}<br>
-                        <strong>Area:</strong> ${props.area_km2 ? props.area_km2.toLocaleString() + ' km²' : 'N/A'}
-                    </div>
-                    <div class="tooltip-arrow"></div>
-                `;
-                firTooltipElement.innerHTML = tooltipText;
-                firTooltipOverlay.setPosition(event.coordinate);
-                map.getTarget().style.cursor = 'pointer';
-                return;
-            }
-            
-            feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
-                if (layer === waypointLayer || layer === airportLayer) {
-                    return feature;
-                }
-                return null;
-            });
-            
-            if (feature) {
-                const props = feature.getProperties();
-                let tooltipText = '';
-                
-                if (props.iata) {
-                    tooltipText = `
-                        <div style="text-align: left;">
-                            <strong style="font-size: 14px; color: #1a73e8;">✈ ${props.name || props.identifier || 'Airport'}</strong><br>
-                            <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
-                            <strong>IATA:</strong> ${props.iata || 'N/A'}<br>
-                            <strong>ICAO:</strong> ${props.icao || 'N/A'}<br>
-                            <strong>City:</strong> ${props.city || 'N/A'}<br>
-                            <strong>Country:</strong> ${props.country || 'N/A'}
-                        </div>
-                        <div class="tooltip-arrow"></div>
-                    `;
-                } else if (props.identifier) {
-                    const type = props.type || 'WAYPOINT';
-                    const frequency = props.frequency ? `${props.frequency} MHz` : 'N/A';
-                    const elevation = props.elevation ? `${props.elevation} ft` : 'N/A';
-                    
-                    let typeIcon = '';
-                    switch(type.toUpperCase()) {
-                        case 'VOR': typeIcon = '🎯 VOR/DME'; break;
-                        case 'NDB': typeIcon = '📻 NDB'; break;
-                        case 'AIRPORT': typeIcon = '✈ AIRPORT'; break;
-                        case 'FIX': typeIcon = '📍 FIX'; break;
-                        default: typeIcon = '📍 ' + type;
-                    }
-                    
-                    tooltipText = `
-                        <div style="text-align: left;">
-                            <strong style="font-size: 14px; color: #FF6B35;">${typeIcon}</strong><br>
-                            <strong>${props.identifier}</strong> - ${props.name || 'Unnamed Waypoint'}<br>
-                            <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
-                            <strong>Type:</strong> ${type}<br>
-                            ${frequency !== 'N/A' ? `<strong>Frequency:</strong> ${frequency}<br>` : ''}
-                            ${elevation !== 'N/A' ? `<strong>Elevation:</strong> ${elevation}<br>` : ''}
-                            <strong>Country:</strong> ${props.country || 'N/A'}<br>
-                            ${props.magnetic_variation ? `<strong>Magnetic Var:</strong> ${props.magnetic_variation}°<br>` : ''}
-                        </div>
-                        <div class="tooltip-arrow"></div>
-                    `;
-                }
-                
-                if (tooltipText) {
-                    wpTooltipElement.innerHTML = tooltipText;
-                    wpTooltipOverlay.setPosition(event.coordinate);
-                    map.getTarget().style.cursor = 'pointer';
-                }
-            }
-        });
 
-        map.on('pointerleave', function() {
-            firTooltipOverlay.setPosition(undefined);
-            wpTooltipOverlay.setPosition(undefined);
-        });
 
         // ==================== MAP CONTROLS ====================
         document.getElementById('zoomIn').addEventListener('click', function() {
@@ -2285,6 +1103,185 @@
                 duration: 500
             });
         });
+// ==================== TOOLTIP HANDLING ====================
+map.on('pointermove', function(event) {
+    const pixel = map.getEventPixel(event.originalEvent);
+    
+    firTooltipOverlay.setPosition(undefined);
+    wpTooltipOverlay.setPosition(undefined);
+    if (window.routeTooltipOverlay) {
+        window.routeTooltipOverlay.setPosition(undefined);
+    }
+    
+    if (map && map.getTarget() && map.getTarget().style) {
+        map.getTarget().style.cursor = '';
+    }
+    
+    let feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+        if (layer === firLayer) {
+            return feature;
+        }
+        return null;
+    });
+    
+    if (feature) {
+        const props = feature.getProperties();
+        const tooltipText = `
+            <div style="text-align: left;">
+                <strong style="font-size: 14px;">FIR: ${props.identifier || 'N/A'}</strong><br>
+                <span style="color: #ffcc00;">${props.name || 'N/A'}</span><br>
+                <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
+                <strong>Country:</strong> ${props.country || 'N/A'}<br>
+                <strong>Frequency:</strong> ${props.frequency || 'N/A'}<br>
+                <strong>Altitude:</strong> ${props.lower_limit || '0'}-${props.upper_limit || '99999'} ft<br>
+                <strong>ICAO Region:</strong> ${props.icao_region || 'N/A'}<br>
+                <strong>Area:</strong> ${props.area_km2 ? props.area_km2.toLocaleString() + ' km²' : 'N/A'}
+            </div>
+            <div class="tooltip-arrow"></div>
+        `;
+        firTooltipElement.innerHTML = tooltipText;
+        firTooltipOverlay.setPosition(event.coordinate);
+        
+        if (map && map.getTarget() && map.getTarget().style) {
+            map.getTarget().style.cursor = 'pointer';
+        }
+        return;
+    }
+    
+    feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+        if (layer === waypointLayer || layer === airportLayer) {
+            return feature;
+        }
+        return null;
+    });
+    
+    if (feature) {
+        const props = feature.getProperties();
+        let tooltipText = '';
+        
+        if (props.iata) {
+            tooltipText = `
+                <div style="text-align: left;">
+                    <strong style="font-size: 14px; color: #1a73e8;">✈ ${props.name || props.identifier || 'Airport'}</strong><br>
+                    <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
+                    <strong>IATA:</strong> ${props.iata || 'N/A'}<br>
+                    <strong>ICAO:</strong> ${props.icao || 'N/A'}<br>
+                    <strong>City:</strong> ${props.city || 'N/A'}<br>
+                    <strong>Country:</strong> ${props.country || 'N/A'}
+                </div>
+                <div class="tooltip-arrow"></div>
+            `;
+        } else if (props.identifier) {
+            const type = props.type || 'WAYPOINT';
+            const frequency = props.frequency ? `${props.frequency} MHz` : 'N/A';
+            const elevation = props.elevation ? `${props.elevation} ft` : 'N/A';
+            
+            let typeIcon = '';
+            switch(type.toUpperCase()) {
+                case 'VOR': typeIcon = '🎯 VOR/DME'; break;
+                case 'NDB': typeIcon = '📻 NDB'; break;
+                case 'AIRPORT': typeIcon = '✈ AIRPORT'; break;
+                case 'FIX': typeIcon = '📍 FIX'; break;
+                default: typeIcon = '📍 ' + type;
+            }
+            
+            tooltipText = `
+                <div style="text-align: left;">
+                    <strong style="font-size: 14px; color: #FF6B35;">${typeIcon}</strong><br>
+                    <strong>${props.identifier}</strong> - ${props.name || 'Unnamed Waypoint'}<br>
+                    <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
+                    <strong>Type:</strong> ${type}<br>
+                    ${frequency !== 'N/A' ? `<strong>Frequency:</strong> ${frequency}<br>` : ''}
+                    ${elevation !== 'N/A' ? `<strong>Elevation:</strong> ${elevation}<br>` : ''}
+                    <strong>Country:</strong> ${props.country || 'N/A'}<br>
+                    ${props.magnetic_variation ? `<strong>Magnetic Var:</strong> ${props.magnetic_variation}°<br>` : ''}
+                </div>
+                <div class="tooltip-arrow"></div>
+            `;
+        }
+        
+        if (tooltipText) {
+            wpTooltipElement.innerHTML = tooltipText;
+            wpTooltipOverlay.setPosition(event.coordinate);
+            
+            if (map && map.getTarget() && map.getTarget().style) {
+                map.getTarget().style.cursor = 'pointer';
+            }
+        }
+        return;
+    }
+    
+    // ========== HOVER ON ROUTE ==========
+    feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+        if (layer === routeLayer) {
+            return feature;
+        }
+        return null;
+    });
+    
+    if (feature) {
+        // ایجاد Route Tooltip به صورت lazy
+        if (!window.routeTooltipElement) {
+            window.routeTooltipElement = document.createElement('div');
+            window.routeTooltipElement.className = 'route-tooltip';
+            window.routeTooltipOverlay = new ol.Overlay({
+                element: window.routeTooltipElement,
+                positioning: 'bottom-center',
+                offset: [0, -10],
+                stopEvent: false
+            });
+            map.addOverlay(window.routeTooltipOverlay);
+        }
+        
+        const props = feature.getProperties();
+        const geometry = feature.getGeometry();
+        
+        // محاسبه مسافت
+        let totalDistance = 0;
+        if (geometry && geometry.getType() === 'LineString') {
+            const coordinates = geometry.getCoordinates();
+            for (let i = 0; i < coordinates.length - 1; i++) {
+                const coord1 = ol.proj.toLonLat(coordinates[i]);
+                const coord2 = ol.proj.toLonLat(coordinates[i + 1]);
+                totalDistance += calculateDistance(coord1, coord2);
+            }
+        }
+        
+        // فرمت دقیق
+        const routeName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
+        
+        const tooltipHTML = `
+            <div class="route-tooltip-content">
+                <div class="tooltip-row">
+                    <span class="tooltip-label">Name Route:</span>
+                    <span class="tooltip-value name">${routeName}</span>
+                </div>
+                <div class="tooltip-row">
+                    <span class="tooltip-label">Distance:</span>
+                    <span class="tooltip-value distance">${totalDistance.toFixed(1)} NM</span>
+                </div>
+            </div>
+            <div class="tooltip-arrow"></div>
+        `;
+        
+        window.routeTooltipElement.innerHTML = tooltipHTML;
+        window.routeTooltipOverlay.setPosition(event.coordinate);
+        
+        if (map && map.getTarget() && map.getTarget().style) {
+            map.getTarget().style.cursor = 'pointer';
+        }
+        return;
+    }
+}); // <-- این خط مهم: بستن تابع pointermove
+
+// ==================== POINTER LEAVE ====================
+map.on('pointerleave', function() {
+    firTooltipOverlay.setPosition(undefined);
+    wpTooltipOverlay.setPosition(undefined);
+    if (window.routeTooltipOverlay) {
+        window.routeTooltipOverlay.setPosition(undefined);
+    }
+});
 
         // ==================== TOOL SELECTION ====================
         function removeAllInteractions() {
