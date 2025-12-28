@@ -301,39 +301,70 @@
         // ==================== INITIALIZATION ====================
         console.log('🚀 FlightFuel Application Initializing...');
 
-        // ==================== GLOBALS ====================
-        const map = new ol.Map({
-            target: 'map',
-            layers: [
-                new ol.layer.Tile({
-                    source: new ol.source.OSM({
-                        url: 'https://{a-c}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
-                    })
-                })
-            ],
-            view: new ol.View({
-                center: ol.proj.fromLonLat([51.3890, 35.6892]),
-                zoom: 5
-            }),
-            controls: []
-        });
-
-        // ==================== MAP LAYERS ====================
-        const airportLayer = new ol.layer.Vector({
-            source: new ol.source.Vector({
-                url: '/api/airports/',
-                format: new ol.format.GeoJSON()
-            }),
-            visible: true,
-            style: new ol.style.Style({
-                image: new ol.style.Circle({
-                    radius: 6,
-                    fill: new ol.style.Fill({color: '#1a73e8'}),
-                    stroke: new ol.style.Stroke({color: 'white', width: 2})
-                })
+// ==================== GLOBALS ====================
+const map = new ol.Map({
+    target: 'map',
+    layers: [
+        new ol.layer.Tile({
+            source: new ol.source.OSM({
+                url: 'https://{a-c}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
             })
-        });
-        map.addLayer(airportLayer);
+        })
+    ],
+    view: new ol.View({
+        center: ol.proj.fromLonLat([51.3890, 35.6892]),
+        zoom: 5
+    }),
+    controls: []
+});
+// ==================== AIRPORT LAYER (FIXED) ====================
+const airportSource = new ol.source.Vector({
+    loader: function(extent, resolution, projection) {
+        fetch('/api/airports/')
+            .then(response => response.json())
+            .then(data => {
+                try {
+                    // اطمینان از ساختار صحیح GeoJSON
+                    if (data && data.features) {
+                        // اگر featureها type ندارند، اضافه کن
+                        data.features.forEach(feature => {
+                            if (feature && !feature.type) {
+                                feature.type = 'Feature';
+                            }
+                            if (feature && !feature.properties) {
+                                feature.properties = {};
+                            }
+                        });
+                        
+                        const features = new ol.format.GeoJSON().readFeatures(data, {
+                            featureProjection: 'EPSG:3857'
+                        });
+                        airportSource.addFeatures(features);
+                        console.log(`✅ Airports loaded: ${features.length} features`);
+                    }
+                } catch (e) {
+                    console.error('❌ Error parsing airport GeoJSON:', e);
+                }
+            })
+            .catch(error => {
+                console.error('❌ Failed to fetch airports:', error);
+            });
+    },
+    strategy: ol.loadingstrategy.bbox
+});
+
+const airportLayer = new ol.layer.Vector({
+    source: airportSource,
+    visible: true,
+    style: new ol.style.Style({
+        image: new ol.style.Circle({
+            radius: 6,
+            fill: new ol.style.Fill({color: '#1a73e8'}),
+            stroke: new ol.style.Stroke({color: 'white', width: 2})
+        })
+    })
+});
+map.addLayer(airportLayer);
 
         const waypointLayer = new ol.layer.Vector({
             source: new ol.source.Vector({
@@ -878,10 +909,97 @@ map.addOverlay(wpTooltipOverlay);
                 });
         };
 
-        window.viewRouteDetails = function(routeId) {
-            alert(`Route ID: ${routeId}\nDetailed view coming soon...`);
-        };
-
+// ==================== VIEW ROUTE DETAILS ====================
+window.viewRouteDetails = function(routeId) {
+    console.log('📋 Loading details for route ID:', routeId);
+    
+    // Show loading on button
+    var clickedBtn = event.target.closest('.view-details-btn');
+    var originalHtml = clickedBtn.innerHTML;
+    clickedBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+    clickedBtn.disabled = true;
+    
+    // Request to new API
+    fetch('/api/get-route/' + routeId + '/')
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error('HTTP error: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(function(data) {
+            // Restore button to original state
+            clickedBtn.innerHTML = originalHtml;
+            clickedBtn.disabled = false;
+            
+            if (data.status === 'success') {
+                var route = data.route;
+                console.log('✅ Route details loaded:', route);
+                
+                // Display information
+                var message = '🛫 ROUTE DETAILS (Read-Only)\n' +
+                    '━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+                    '📌 Route Name: ' + (route.name || 'Unnamed Route') + '\n' +
+                    '📏 Total Distance: ' + (route.total_distance || '0') + ' NM\n';
+                
+                // Display Waypoints information
+                var waypointsInfo = '📍 Waypoints Count: ' + (route.waypoints ? route.waypoints.length : 0) + '\n';
+                
+                // If waypoints exist, show their names
+                if (route.waypoints && route.waypoints.length > 0) {
+                    if (route.waypoints.length <= 8) {
+                        // Show all waypoints if 8 or less
+                        waypointsInfo += '   └─ ' + route.waypoints.join(' → ') + '\n';
+                    } else {
+                        // Show first 3, then "...", then last 2 waypoints if more than 8
+                        waypointsInfo += '   └─ ' + 
+                            route.waypoints.slice(0, 3).join(' → ') + 
+                            ' ... → ' + 
+                            route.waypoints.slice(-2).join(' → ') + '\n';
+                    }
+                }
+                
+                message += waypointsInfo;
+                
+                // Display FIR information
+                if (route.fir_count > 0) {
+                    message += '🏢 Flight Info Regions (FIR): ' + route.fir_count + '\n';
+                    
+                    // If FIR list is available, show details
+                    if (route.fir_list && route.fir_list.length > 0) {
+                        message += '   └─ Passes through: ';
+                        var firNames = route.fir_list.map(function(fir) {
+                            return fir.identifier + ' (' + fir.name + ')';
+                        });
+                        message += firNames.join(' → ') + '\n';
+                    }
+                } else {
+                    message += '🏢 Flight Info Regions (FIR): N/A\n';
+                }
+                
+                message += 
+                    '━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+                    '✈️ Departure: ' + route.departure + '\n' +
+                    '✈️ Arrival: ' + route.arrival + '\n' +
+                    '⏱️ Flight Time: ' + (route.flight_time || 'N/A') + '\n' +
+                    '📅 Created: ' + (route.created_at || 'Unknown') + '\n' +
+                    '👤 Created By: ' + (route.created_by || 'System') + '\n';
+                
+                alert(message);
+                
+            } else {
+                alert('❌ Error: ' + (data.message || 'Failed to load route details'));
+            }
+        })
+        .catch(function(error) {
+            // Restore button to original state
+            clickedBtn.innerHTML = originalHtml;
+            clickedBtn.disabled = false;
+            
+            console.error('❌ Detail fetch error:', error);
+            alert('⚠️ Network Error: ' + error.message);
+        });
+};
         // ==================== SHOW DIRECT ROUTE FUNCTION ====================
         function showDirectRoute(departure, arrival) {
             console.log('Creating route from', departure, 'to', arrival);
@@ -1124,21 +1242,24 @@ map.on('pointermove', function(event) {
         return null;
     });
     
-    if (feature) {
-        const props = feature.getProperties();
-        const tooltipText = `
-            <div style="text-align: left;">
-                <strong style="font-size: 14px;">FIR: ${props.identifier || 'N/A'}</strong><br>
-                <span style="color: #ffcc00;">${props.name || 'N/A'}</span><br>
-                <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
-                <strong>Country:</strong> ${props.country || 'N/A'}<br>
-                <strong>Frequency:</strong> ${props.frequency || 'N/A'}<br>
-                <strong>Altitude:</strong> ${props.lower_limit || '0'}-${props.upper_limit || '99999'} ft<br>
-                <strong>ICAO Region:</strong> ${props.icao_region || 'N/A'}<br>
-                <strong>Area:</strong> ${props.area_km2 ? props.area_km2.toLocaleString() + ' km²' : 'N/A'}
+if (feature) {
+    const props = feature.getProperties();
+    const tooltipText = `
+        <div style="text-align: left; max-width: 250px;">
+            <strong style="font-size: 14px;">FIR: ${props.identifier || 'N/A'}</strong><br>
+            <span style="color: #ffcc00;">${props.name || 'N/A'}</span>
+            <hr style="margin: 8px 0; border-color: rgba(255,255,255,0.3)">
+            <div style="font-size: 12px; line-height: 1.4;">
+                <div><strong>Country:</strong> ${props.country || 'N/A'}</div>
+                <div><strong>Frequency:</strong> ${props.frequency || 'N/A'}</div>
+                <div><strong>Altitude:</strong> ${props.lower_limit || '0'}-${props.upper_limit || '99999'} ft</div>
+                <div><strong>ICAO Region:</strong> ${props.icao_region || 'N/A'}</div>
+                <div><strong>Area:</strong> ${props.area_km2 ? props.area_km2.toLocaleString() + ' km²' : 'N/A'}</div>
             </div>
-            <div class="tooltip-arrow"></div>
-        `;
+        </div>
+        <div class="tooltip-arrow"></div>
+    `;
+    
         firTooltipElement.innerHTML = tooltipText;
         firTooltipOverlay.setPosition(event.coordinate);
         
@@ -1159,18 +1280,55 @@ map.on('pointermove', function(event) {
         const props = feature.getProperties();
         let tooltipText = '';
         
-        if (props.iata) {
-            tooltipText = `
-                <div style="text-align: left;">
-                    <strong style="font-size: 14px; color: #1a73e8;">✈ ${props.name || props.identifier || 'Airport'}</strong><br>
-                    <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
-                    <strong>IATA:</strong> ${props.iata || 'N/A'}<br>
-                    <strong>ICAO:</strong> ${props.icao || 'N/A'}<br>
-                    <strong>City:</strong> ${props.city || 'N/A'}<br>
-                    <strong>Country:</strong> ${props.country || 'N/A'}
+if (props.iata) {
+    // کوتاه کردن نام اگر خیلی طولانی است
+    const airportName = props.name || props.identifier || 'Airport';
+    const displayName = airportName.length > 30 
+        ? airportName.substring(0, 27) + '...' 
+        : airportName;
+    
+    tooltipText = `
+        <div style="text-align: left; max-width: 250px;">
+            <div style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
+            ">
+                <div style="
+                    width: 24px;
+                    height: 24px;
+                    background: #1a73e8;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    font-size: 12px;
+                    flex-shrink: 0;
+                ">✈</div>
+                <div style="
+                    font-size: 14px;
+                    color: #1a73e8;
+                    font-weight: bold;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    max-width: 200px;
+                " title="${airportName}">
+                    ${displayName}
                 </div>
-                <div class="tooltip-arrow"></div>
-            `;
+            </div>
+            <hr style="margin: 8px 0; border-color: rgba(255,255,255,0.3)">
+            <div style="font-size: 12px; line-height: 1.4;">
+                <div><strong style="color: #4fc3f7;">IATA:</strong> ${props.iata || 'N/A'}</div>
+                <div><strong style="color: #4fc3f7;">ICAO:</strong> ${props.icao || 'N/A'}</div>
+                <div><strong style="color: #4fc3f7;">City:</strong> ${props.city || 'N/A'}</div>
+                <div><strong style="color: #4fc3f7;">Country:</strong> ${props.country || 'N/A'}</div>
+            </div>
+            <div class="tooltip-arrow"></div>
+        </div>
+    `;
         } else if (props.identifier) {
             const type = props.type || 'WAYPOINT';
             const frequency = props.frequency ? `${props.frequency} MHz` : 'N/A';
@@ -1250,20 +1408,29 @@ map.on('pointermove', function(event) {
         // فرمت دقیق
         const routeName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
         
-        const tooltipHTML = `
-            <div class="route-tooltip-content">
-                <div class="tooltip-row">
-                    <span class="tooltip-label">Name Route:</span>
-                    <span class="tooltip-value name">${routeName}</span>
-                </div>
-                <div class="tooltip-row">
-                    <span class="tooltip-label">Distance:</span>
-                    <span class="tooltip-value distance">${totalDistance.toFixed(1)} NM</span>
-                </div>
-            </div>
-            <div class="tooltip-arrow"></div>
-        `;
-        
+const tooltipHTML = `
+    <div class="route-tooltip-content">
+        <div class="route-tooltip-header">
+            <div class="route-icon">✈</div>
+            <div class="route-title">FLIGHT ROUTE</div>
+        </div>
+        <div class="tooltip-row">
+            <span class="tooltip-label">
+                <i class="fas fa-route"></i>
+                Name Route:
+            </span>
+            <span class="tooltip-value name" title="${routeName}">${routeName}</span>
+        </div>
+        <div class="tooltip-row">
+            <span class="tooltip-label">
+                <i class="fas fa-ruler"></i>
+                Distance:
+            </span>
+            <span class="tooltip-value distance">${totalDistance.toFixed(1)} NM</span>
+        </div>
+    </div>
+    <div class="tooltip-arrow"></div>
+`;
         window.routeTooltipElement.innerHTML = tooltipHTML;
         window.routeTooltipOverlay.setPosition(event.coordinate);
         

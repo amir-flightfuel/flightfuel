@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
-from django.contrib.gis.geos import Point, LineString
+from django.contrib.gis.geos import Point, LineString, Polygon
 from django.db.models import Q
 import json
 import re
@@ -22,20 +22,20 @@ from django.contrib.auth.models import User
 from rest_framework.permissions import AllowAny
 from django.utils import timezone
 
-# ==================== توابع کمکی ====================
+# ==================== HELPER FUNCTIONS ====================
 
 def get_icao_code(code, return_original_if_not_found=True):
     """
-    تبدیل هوشمند کد فرودگاه به ICAO - نسخه نهایی
+    Smart conversion of airport code to ICAO - final version
     """
     if not code:
         return None
     
     code = code.upper().strip()
     
-    # ۱. اگر ۴ حرفی و فقط حروف: احتمالاً ICAO است
+    # 1. If 4 letters and alphabetic: likely ICAO
     if len(code) == 4 and code.isalpha():
-        # بررسی در airports
+        # Check in airports
         airport = Airport.objects.filter(
             Q(icao_code=code) | Q(iata_code=code)
         ).first()
@@ -43,59 +43,59 @@ def get_icao_code(code, return_original_if_not_found=True):
             return airport.icao_code
         return code
     
-    # ۲. اگر ۳ حرفی و فقط حروف: IATA است
+    # 2. If 3 letters and alphabetic: IATA
     elif len(code) == 3 and code.isalpha():
-        # جستجو در airports
+        # Search in airports
         airport = Airport.objects.filter(iata_code=code).first()
         if airport and airport.icao_code:
             return airport.icao_code
         
-        # اگر پیدا نشد و flag فعال است، همان کد رو برگردون
+        # If not found and flag is active, return original
         if return_original_if_not_found:
             return code
         
         return None
     
-    # ۳. برای سایر موارد
+    # 3. For other cases
     return code if return_original_if_not_found else None
 
 def validate_airport_code(code):
     """
-    اعتبارسنجی کد فرودگاه و برگرداندن اطلاعات
+    Validate airport code and return information
     """
     if not code:
-        return {'valid': False, 'error': 'کد فرودگاه خالی است'}
+        return {'valid': False, 'error': 'Airport code is empty'}
     
     code = code.upper().strip()
     
-    # بررسی طول
+    # Check length
     if len(code) not in [3, 4]:
         return {
             'valid': False, 
-            'error': 'کد فرودگاه باید ۳ حرفی (IATA) یا ۴ حرفی (ICAO) باشد',
+            'error': 'Airport code must be 3-letter (IATA) or 4-letter (ICAO)',
             'input': code
         }
     
-    # بررسی حروف
+    # Check alphabetic
     if not code.isalpha():
         return {
             'valid': False,
-            'error': 'کد فرودگاه باید فقط شامل حروف باشد',
+            'error': 'Airport code must contain only letters',
             'input': code
         }
     
-    # تبدیل به ICAO
+    # Convert to ICAO
     icao_code = get_icao_code(code)
     
     if not icao_code:
         return {
             'valid': False,
-            'error': f'کد فرودگاه "{code}" در پایگاه داده یافت نشد',
+            'error': f'Airport code "{code}" not found in database',
             'input': code,
-            'suggestion': 'از کد IATA (THR) یا ICAO (OIII) معتبر استفاده کنید'
+            'suggestion': 'Use valid IATA (THR) or ICAO (OIII) codes'
         }
     
-    # پیدا کردن اطلاعات فرودگاه
+    # Find airport information
     airport = Airport.objects.filter(
         Q(icao_code=icao_code) | Q(iata_code=code)
     ).first()
@@ -108,7 +108,7 @@ def validate_airport_code(code):
     }
 
 def parse_route_text(route_text):
-    """پارس کردن متن مسیر - پشتیبانی از IATA و ICAO"""
+    """Parse route text - support IATA and ICAO"""
     try:
         parts = [p for p in route_text.split() if p not in ['DCT']]
         
@@ -121,51 +121,51 @@ def parse_route_text(route_text):
         waypoints = []
         coordinates = []
         
-        # اضافه کردن مختصات برای هر بخش
+        # Add coordinates for each part
         for part in parts:
-            # تشخیص نوع کد (IATA یا ICAO)
+            # Detect code type (IATA or ICAO)
             is_airport = False
             airport = None
             
-            # اگر 3 حرفی است (IATA)
+            # If 3 letters (IATA)
             if len(part) == 3 and part.isalpha():
                 airport = Airport.objects.filter(iata_code=part).first()
                 if airport:
                     is_airport = True
             
-            # اگر 4 حرفی است (ICAO)  
+            # If 4 letters (ICAO)  
             if not airport and len(part) == 4 and part.isalpha():
                 airport = Airport.objects.filter(icao_code=part).first()
                 if airport:
                     is_airport = True
             
-            # اگر فرودگاه پیدا شد
+            # If airport found
             if is_airport and airport:
                 coordinates.append([airport.location.x, airport.location.y])
                 if part not in [departure, arrival]:
                     waypoints.append(part)
                 continue
                 
-            # اگر waypoint است
+            # If waypoint
             waypoint = Waypoint.objects.filter(identifier=part).first()
             if waypoint:
                 coordinates.append([waypoint.location.x, waypoint.location.y])
                 waypoints.append(part)
                 continue
                 
-            # اگر airway است - نادیده بگیر
+            # If airway - ignore
             if re.match(r'^[ABGRULMNZW]\d+', part):
                 continue
                 
-            # اگر SID/STAR است - نادیده بگیر
+            # If SID/STAR - ignore
             if re.match(r'.*[0-9][A-Z]$', part):
                 continue
         
-        # اگر مختصات کافی نداریم
+        # If insufficient coordinates
         if len(coordinates) < 2:
             return None
             
-        # محاسبه مسافت
+        # Calculate distance
         total_distance = calculate_route_distance(coordinates)
         
         return {
@@ -181,7 +181,7 @@ def parse_route_text(route_text):
         return None
 
 def calculate_route_distance(coordinates):
-    """محاسبه مسافت کل مسیر"""
+    """Calculate total route distance"""
     total_distance = 0
     for i in range(len(coordinates) - 1):
         coord1 = coordinates[i]
@@ -190,11 +190,11 @@ def calculate_route_distance(coordinates):
     return total_distance
 
 def calculate_distance_nm(coord1, coord2):
-    """محاسبه فاصله بین دو نقطه به ناتیکال مایل"""
+    """Calculate distance between two points in nautical miles"""
     lon1, lat1 = coord1
     lon2, lat2 = coord2
     
-    R = 3440.065  # شعاع زمین به ناتیکال مایل
+    R = 3440.065  # Earth radius in nautical miles
     dLat = (lat2 - lat1) * math.pi / 180
     dLon = (lon2 - lon1) * math.pi / 180
     
@@ -205,7 +205,43 @@ def calculate_distance_nm(coord1, coord2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
-# ==================== ViewSet های DRF ====================
+def calculate_firs_for_route(coordinates):
+    """
+    Calculate which FIRs the route passes through
+    Returns: (count, list_of_firs)
+    """
+    try:
+        if not coordinates or len(coordinates) < 2:
+            return 0, []
+        
+        # Create LineString from route coordinates
+        route_line = LineString(coordinates, srid=4326)
+        
+        # Find intersecting FIRs
+        intersecting_firs = FlightInformationRegion.objects.filter(
+            boundary__intersects=route_line
+        ).order_by('identifier')
+        
+        fir_count = intersecting_firs.count()
+        
+        # Prepare FIR list
+        fir_list = []
+        for fir in intersecting_firs:
+            fir_list.append({
+                'identifier': fir.identifier,
+                'name': fir.name,
+                'country': fir.country,
+                'country_code': fir.country_code,
+                'icao_region': fir.icao_region
+            })
+        
+        return fir_count, fir_list
+        
+    except Exception as e:
+        print(f"Error calculating FIRs: {e}")
+        return 0, []
+
+# ==================== DRF ViewSets ====================
 
 class WaypointViewSet(viewsets.ModelViewSet):
     queryset = Waypoint.objects.all()
@@ -307,7 +343,7 @@ class RouteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['GET'])
     def search(self, request):
         """
-        جستجوی مسیرهای ذخیره شده بر اساس مبدا و مقصد
+        Search saved routes based on origin and destination
         """
         try:
             origin = request.query_params.get('origin', '').strip().upper()
@@ -319,7 +355,7 @@ class RouteViewSet(viewsets.ModelViewSet):
                     'example': '/api/routes/search/?origin=THR&destination=MHD'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # تبدیل به ICAO
+            # Convert to ICAO
             origin_icao = get_icao_code(origin)
             destination_icao = get_icao_code(destination)
             
@@ -340,13 +376,13 @@ class RouteViewSet(viewsets.ModelViewSet):
                     'error': 'Origin and destination cannot be the same airport'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # جستجوی مسیرها - جستجو با هر دو IATA و ICAO
+            # Search routes - search with both IATA and ICAO
             routes = Route.objects.filter(
                 Q(departure__iexact=origin_icao) | Q(departure__iexact=origin),
                 Q(arrival__iexact=destination_icao) | Q(arrival__iexact=destination)
             ).order_by('total_distance', '-created_at')
             
-            # جستجوی دوطرفه
+            # Bidirectional search
             if not routes.exists():
                 routes = Route.objects.filter(
                      Q(departure__iexact=destination_icao) | Q(departure__iexact=destination),
@@ -395,7 +431,7 @@ class RouteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['GET'])
     def search_by_airport(self, request):
         """
-        جستجوی همه مسیرهای مرتبط با یک فرودگاه
+        Search all routes related to an airport
         """
         try:
             airport_code = request.query_params.get('airport', '').strip().upper()
@@ -466,7 +502,7 @@ class RouteViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['GET'])
     def search_airport(self, request):
-        """جستجوی فرودگاه بر اساس IATA یا ICAO"""
+        """Search airport by IATA or ICAO"""
         code = request.query_params.get('code', '').strip().upper()
         
         if not code:
@@ -493,7 +529,7 @@ class RouteViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_404_NOT_FOUND)
     
     def calculate_routes(self, departure, arrival):
-        """محاسبه مسیرهای مختلف"""
+        """Calculate different routes"""
         result = {
             'departure': departure,
             'arrival': arrival,
@@ -507,7 +543,7 @@ class RouteViewSet(viewsets.ModelViewSet):
         return result
     
     def calculate_direct_route(self, departure, arrival):
-        """محاسبه مسیر مستقیم"""
+        """Calculate direct route"""
         try:
             dep_wp = Waypoint.objects.get(identifier=departure)
             arr_wp = Waypoint.objects.get(identifier=arrival)
@@ -525,7 +561,7 @@ class RouteViewSet(viewsets.ModelViewSet):
             return {'error': 'Waypoint not found'}
     
     def calculate_airway_route(self, departure, arrival):
-        """محاسبه مسیر با استفاده از airwayها"""
+        """Calculate route using airways"""
         return {
             'type': 'AIRWAY',
             'waypoints': [],
@@ -534,7 +570,7 @@ class RouteViewSet(viewsets.ModelViewSet):
         }
     
     def calculate_via_waypoints(self, departure, arrival):
-        """محاسبه مسیر با نقاط میانی"""
+        """Calculate route via intermediate points"""
         try:
             dep_wp = Waypoint.objects.get(identifier=departure)
             arr_wp = Waypoint.objects.get(identifier=arrival)
@@ -560,7 +596,7 @@ class RouteViewSet(viewsets.ModelViewSet):
             return {'error': 'Waypoint not found'}
     
     def calculate_distance_for_waypoints(self, waypoints):
-        """محاسبه مسافت برای لیست waypoints"""
+        """Calculate distance for list of waypoints"""
         total_nm = 0
         for i in range(len(waypoints) - 1):
             try:
@@ -582,7 +618,7 @@ class FlightInformationRegionViewSet(viewsets.ModelViewSet):
     search_fields = ['identifier', 'name', 'country']
     ordering_fields = ['identifier', 'name', 'country']
 
-# ==================== API های کاربردی ====================
+# ==================== UTILITY APIs ====================
 
 class AirportGeoJSON(APIView):
     def get(self, request):
@@ -728,7 +764,7 @@ class SaveRouteAPI(APIView):
     
     def post(self, request):
         try:
-            print("📦 SaveRouteAPI: دریافت داده‌ها...")
+            print("📦 SaveRouteAPI: Receiving data...")
             data = request.data
             
             required_fields = ['departure', 'arrival', 'coordinates']
@@ -736,7 +772,7 @@ class SaveRouteAPI(APIView):
                 if field not in data:
                     return JsonResponse({
                         'status': 'error',
-                        'message': f'فیلد {field} وجود ندارد'
+                        'message': f'Field {field} is missing'
                     }, status=400)
             
             coords = data['coordinates']
@@ -752,7 +788,7 @@ class SaveRouteAPI(APIView):
             if len(line_coords) < 2:
                 return JsonResponse({
                     'status': 'error',
-                    'message': 'حداقل ۲ نقطه برای ساخت مسیر لازم است'
+                    'message': 'Minimum 2 points required to create a route'
                 }, status=400)
             
             departure = data['departure']
@@ -818,7 +854,7 @@ class SaveAsRouteAPI(APIView):
                 if field not in data:
                     return JsonResponse({
                         'status': 'error',
-                        'message': f'فیلد {field} وجود ندارد'
+                        'message': f'Field {field} is missing'
                     }, status=400)
             
             coords = data['coordinates']
@@ -834,7 +870,7 @@ class SaveAsRouteAPI(APIView):
             if len(line_coords) < 2:
                 return JsonResponse({
                     'status': 'error',
-                    'message': 'حداقل ۲ نقطه برای ساخت مسیر لازم است'
+                    'message': 'Minimum 2 points required to create a route'
                 }, status=400)
             
             departure = data['departure']
@@ -861,7 +897,7 @@ class SaveAsRouteAPI(APIView):
                 coordinates=LineString(line_coords, srid=4326),
                 total_distance=data.get('total_distance', 0),
                 flight_time=data.get('flight_time', ''),
-                description=data.get('description', f'نسخه {version} - {timezone.now().strftime("%Y-%m-%d %H:%M")}'),
+                description=data.get('description', f'Version {version} - {timezone.now().strftime("%Y-%m-%d %H:%M")}'),
                 created_by=User.objects.first() if User.objects.exists() else None
             )
             
@@ -923,6 +959,77 @@ class GetRoutesAPI(APIView):
                 'status': 'error',
                 'message': str(e)
             }, status=400)
+
+# ==================== ROUTE DETAIL API ====================
+class GetRouteDetailAPI(APIView):
+    """
+    API for getting complete details of a specific route (for Details button)
+    """
+    permission_classes = [AllowAny]
+    
+    def get(self, request, route_id):
+        try:
+            print(f"📋 GetRouteDetailAPI: Getting route details ID={route_id}")
+            
+            # Find route from database
+            try:
+                route = Route.objects.get(id=route_id)
+            except Route.DoesNotExist:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Route with ID {route_id} not found'
+                }, status=404)
+            
+            # Extract coordinates
+            coordinates = []
+            if route.coordinates:
+                try:
+                    if hasattr(route.coordinates, 'coords'):
+                        coordinates = list(route.coordinates.coords)
+                    else:
+                        coordinates = route.coordinates
+                except Exception as e:
+                    print(f"⚠️ Error reading coordinates: {e}")
+            
+            # Calculate FIRs the route passes through
+            fir_count = 0
+            fir_list = []
+            
+            if coordinates and len(coordinates) > 1:
+                fir_count, fir_list = calculate_firs_for_route(coordinates)
+                print(f"✅ Calculated FIRs: {fir_count} FIRs")
+            
+            # Prepare response
+            route_data = {
+                'id': route.id,
+                'name': route.name,
+                'departure': route.departure,
+                'arrival': route.arrival,
+                'total_distance': route.total_distance,
+                'flight_time': route.flight_time,
+                'waypoints': route.waypoints,
+                'coordinates': coordinates,
+                'description': route.description if hasattr(route, 'description') else '',
+                'created_by': route.created_by.username if route.created_by else 'System',
+                'created_at': route.created_at.strftime('%Y-%m-%d %H:%M'),
+                'fir_count': fir_count,
+                'fir_list': fir_list,  # List of FIRs with details
+            }
+            
+            return JsonResponse({
+                'status': 'success',
+                'route': route_data
+            })
+            
+        except Exception as e:
+            import traceback
+            print(f"❌ GetRouteDetailAPI Error: {str(e)}")
+            print(traceback.format_exc())
+            
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Error getting route details: {str(e)}'
+            }, status=500)
 
 class DeleteRouteAPI(APIView):
     def delete(self, request, route_id):
@@ -992,10 +1099,10 @@ class ImportRouteAPI(APIView):
                 'message': str(e)
             }, status=400)
 
-# ==================== API Route Search ====================
+# ==================== ROUTE SEARCH API ====================
 class RouteSearchAPI(APIView):
     """
-    API جدید برای جستجوی مسیرها - پشتیبانی کامل از IATA/ICAO
+    New API for searching routes - full IATA/ICAO support
     """
     
     permission_classes = [IsAuthenticatedOrReadOnly]
@@ -1013,7 +1120,7 @@ class RouteSearchAPI(APIView):
                     'message': 'Both origin and destination airport codes are required'
                 }, status=400)
             
-            # پیدا کردن اطلاعات فرودگاه‌ها
+            # Find airport information
             origin_airport = Airport.objects.filter(
                 Q(iata_code=origin) | Q(icao_code=origin)
             ).first()
@@ -1025,24 +1132,24 @@ class RouteSearchAPI(APIView):
             origin_icao = origin_airport.icao_code if origin_airport else origin
             destination_icao = destination_airport.icao_code if destination_airport else destination
             
-            print(f"🔍 تبدیل کدها: {origin}→{origin_icao}, {destination}→{destination_icao}")
+            print(f"🔍 Code conversion: {origin}→{origin_icao}, {destination}→{destination_icao}")
             
-            # ساخت همه ترکیبات ممکن برای جستجو
+            # Create all possible search combinations
             search_combinations = [
-                (origin, destination),                    # اصلی‌ترین
-                (origin_icao, destination_icao),          # ICAO تبدیل شده
-                (origin_icao, destination),               # ترکیب ۱
-                (origin, destination_icao),               # ترکیب ۲
-                (destination, origin),                    # معکوس اصلی
-                (destination_icao, origin_icao),          # معکوس ICAO
+                (origin, destination),                    # Original
+                (origin_icao, destination_icao),          # Converted ICAO
+                (origin_icao, destination),               # Combination 1
+                (origin, destination_icao),               # Combination 2
+                (destination, origin),                    # Reverse original
+                (destination_icao, origin_icao),          # Reverse ICAO
             ]
             
-            # حذف duplicate ها
+            # Remove duplicates
             search_combinations = list(set(search_combinations))
             
-            print(f"🔍 ترکیبات جستجو: {search_combinations}")
+            print(f"🔍 Search combinations: {search_combinations}")
             
-            # جستجو در همه ترکیبات
+            # Search in all combinations
             all_routes = []
             seen_ids = set()
             
@@ -1057,9 +1164,9 @@ class RouteSearchAPI(APIView):
                         seen_ids.add(route.id)
                         all_routes.append(route)
             
-            print(f"✅ یافت شد: {len(all_routes)} مسیر")
+            print(f"✅ Found: {len(all_routes)} routes")
             
-            # آماده‌سازی نتایج
+            # Prepare results
             routes_list = []
             for route in all_routes:
                 coordinates = []
@@ -1087,7 +1194,7 @@ class RouteSearchAPI(APIView):
                 }
                 routes_list.append(route_data)
             
-            # اطلاعات فرودگاه‌ها برای نمایش
+            # Airport information for display
             origin_info = {
                 'code': origin,
                 'icao': origin_icao,
@@ -1135,10 +1242,10 @@ class RouteSearchAPI(APIView):
             }, status=500)
 
 
-# ==================== View برای صفحه داشبورد ====================
+# ==================== DASHBOARD VIEW ====================
 
 def dashboard_view(request):
-    """صفحه اصلی داشبورد"""
+    """Main dashboard page"""
     waypoint_count = Waypoint.objects.count()
     route_count = Route.objects.count()
     airway_count = Airway.objects.count()

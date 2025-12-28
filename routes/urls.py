@@ -6,7 +6,7 @@ from .views import (
     RouteViewSet, FlightInformationRegionViewSet,
     AirportGeoJSON, WaypointGeoJSON, FIRGeoJSON,
     CalculateRoute, SaveRouteAPI, SaveAsRouteAPI,
-    GetRoutesAPI, DeleteRouteAPI, ImportRouteAPI,
+    GetRoutesAPI, GetRouteDetailAPI, DeleteRouteAPI, ImportRouteAPI,
     RouteSearchAPI, dashboard_view
 )
 
@@ -37,12 +37,13 @@ urlpatterns = [
     path('api/save-route/', SaveRouteAPI.as_view(), name='save_route'),
     path('api/save-route-as/', SaveAsRouteAPI.as_view(), name='save_route_as'),
     path('api/get-routes/', GetRoutesAPI.as_view(), name='get_routes'),
+    path('api/get-route/<int:route_id>/', GetRouteDetailAPI.as_view(), name='get_route_detail'),  # <-- خط جدید اضافه شده
     path('api/delete-route/<int:route_id>/', DeleteRouteAPI.as_view(), name='delete_route'),
     path('api/import-route/', ImportRouteAPI.as_view(), name='import_route'),
     
     # 4. Route Search APIs
     path('api/route-search/', RouteSearchAPI.as_view(), name='route_search'),
     
-    # 5. NEW: Airport Search API (برای تبدیل IATA به ICAO)
+    # 5. Airport Search API (برای تبدیل IATA به ICAO)
     path('api/airports/search/', RouteViewSet.as_view({'get': 'search_airport'}), name='airport_search'),
 ]
