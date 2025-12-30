@@ -1,3 +1,4 @@
+/* ==================== ROOT VARIABLES ==================== */
 :root {
     --primary-blue: #1a73e8;
     --dark-blue: #0d47a1;
@@ -19,12 +20,25 @@
     --border-radius-sm: 4px;
 }
 
+/* ==================== BASE RESET ==================== */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
+/* ==================== PAGE ROOT LOCK ==================== */
+/* Prevents scrolling on the entire page */
+html, body {
+    overflow: hidden !important;
+    height: 100vh;
+    width: 100vw;
+    position: fixed;
+    top: 0;
+    left: 0;
+}
+
+/* ==================== BODY & MAIN CONTAINERS ==================== */
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: var(--gray-bg);
@@ -32,9 +46,9 @@ body {
     height: 100vh;
     margin: 0;
     padding: 0;
-    overflow-x: hidden;
 }
 
+/* ==================== TOP NAVIGATION BAR ==================== */
 .top-bar {
     position: fixed;
     top: 0;
@@ -122,11 +136,13 @@ body {
     transform: translateY(-1px);
 }
 
+/* ==================== MAIN APPLICATION LAYOUT ==================== */
 .app-container {
     display: flex;
-    height: calc(100vh - 60px);
+    height: calc(100vh - 60px) !important;
+    width: 100vw !important;
     margin-top: 60px;
-    overflow: hidden;
+    overflow: hidden !important;
     position: relative;
 }
 
@@ -140,13 +156,13 @@ body {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 20px;
     box-shadow: var(--shadow-sm);
     z-index: 900;
     position: relative;
     resize: horizontal;
-    overflow: auto;
-    min-height: 100%;
+    height: 100%;
     transition: width 0.1s ease;
 }
 
@@ -295,11 +311,13 @@ body {
     color: var(--primary-blue);
 }
 
+/* ==================== MAP CONTAINER ==================== */
 .map-container {
     flex: 1;
     position: relative;
     background: #e9eef2;
-    overflow: hidden;
+    overflow: hidden !important;
+    height: 100%;
 }
 
 #map {
@@ -353,6 +371,7 @@ body {
     border-bottom: 1px solid var(--gray-medium);
 }
 
+/* ==================== TOOLTIPS ==================== */
 .fir-tooltip, .wp-tooltip {
     position: absolute;
     padding: 12px;
@@ -393,7 +412,7 @@ body {
     border-right-color: transparent;
 }
 
-/* استایل tooltip مسیرها */
+/* ==================== ROUTE TOOLTIP ==================== */
 .route-tooltip {
     position: absolute;
     background: rgba(0, 0, 0, 0.97);
@@ -547,6 +566,7 @@ body {
     z-index: -1;
 }
 
+/* ==================== FORM CONTROLS ==================== */
 .form-group {
     margin-bottom: 16px;
 }
@@ -578,6 +598,7 @@ body {
     height: 42px;
 }
 
+/* ==================== BUTTONS ==================== */
 .btn {
     padding: 10px 20px;
     border: none;
@@ -811,7 +832,7 @@ body {
     border-radius: 3px;
 }
 
-/* ========== ROUTE SEARCH MODAL ========== */
+/* ==================== ROUTE SEARCH MODAL ==================== */
 .route-search-modal {
     display: none;
     position: fixed;
@@ -1157,7 +1178,7 @@ body {
     margin: 0 auto 15px;
 }
 
-/* انیمیشن‌ها */
+/* ==================== ANIMATIONS ==================== */
 @keyframes modalSlideIn {
     from {
         opacity: 0;
@@ -1212,6 +1233,7 @@ body {
     to { opacity: 1; }
 }
 
+/* ==================== STATUS MESSAGES ==================== */
 .status-message {
     padding: 10px 14px;
     border-radius: var(--border-radius-sm);
@@ -1238,6 +1260,7 @@ body {
     color: #721c24;
 }
 
+/* ==================== CURSORS ==================== */
 .cursor-crosshair {
     cursor: crosshair !important;
 }
@@ -1261,14 +1284,15 @@ body {
     .app-container {
         flex-direction: column;
         height: auto;
-        min-height: calc(100vh - 60px);
-        overflow: visible;
+        min-height: 100vh;
+        margin-top: 50px;
+        overflow: visible !important;
     }
     
     .sidebar {
         width: 100%;
         height: auto;
-        max-height: 50vh;
+        max-height: 40vh;
         border-right: none;
         border-bottom: 1px solid var(--gray-medium);
         resize: none;
@@ -1277,7 +1301,7 @@ body {
     }
     
     .map-container {
-        height: 50vh;
+        height: 60vh;
         min-height: 300px;
         flex: none;
     }
@@ -1387,4 +1411,204 @@ body {
         padding: 8px 16px;
         font-size: 13px;
     }
-}.route-search-header h2
+}
+/* ==================== MODE STATUS ==================== */
+.mode-status {
+    display: inline-block;
+    background: #d4edda;
+    color: #155724;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin-left: 8px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.mode-status.edit {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* ==================== MODE HINT ==================== */
+.mode-hint {
+    background: #e8f0fe;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #1a73e8;
+    border: 1px solid #c3d9ff;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.mode-hint i {
+    margin-top: 2px;
+}
+
+/* ==================== SAVE ROUTE MODAL ==================== */
+.save-route-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10002;
+    align-items: center;
+    justify-content: center;
+}
+
+.save-route-modal.active {
+    display: flex;
+}
+
+.save-route-content {
+    background: white;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 450px;
+    padding: 0;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    animation: modalSlideIn 0.3s ease;
+}
+
+.save-route-header {
+    background: linear-gradient(135deg, #1a73e8, #0d47a1);
+    color: white;
+    padding: 20px 25px;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.save-route-header h2 {
+    margin: 0;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.save-route-body {
+    padding: 25px;
+}
+
+.save-option-group {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.save-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.save-option:last-child {
+    margin-bottom: 0;
+}
+
+.save-option input[type="radio"] {
+    margin-top: 3px;
+}
+
+.save-option label {
+    font-weight: 600;
+    color: #202124;
+    cursor: pointer;
+    flex: 1;
+}
+
+.save-option-desc {
+    font-size: 13px;
+    color: #5f6368;
+    margin-left: 26px;
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
+.save-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 25px;
+}
+
+.save-btn {
+    flex: 1;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s;
+}
+
+.save-btn-cancel {
+    background: #f8f9fa;
+    color: #5f6368;
+    border: 1px solid #dadce0;
+}
+
+.save-btn-cancel:hover {
+    background: #e9ecef;
+}
+
+.save-btn-confirm {
+    background: #34a853;
+    color: white;
+}
+
+.save-btn-confirm:hover {
+    background: #2e8b57;
+    transform: translateY(-2px);
+}
+
+.route-name-input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #dadce0;
+    border-radius: 8px;
+    font-size: 15px;
+    margin-top: 8px;
+    box-sizing: border-box;
+    transition: all 0.3s;
+}
+
+.route-name-input:focus {
+    outline: none;
+    border-color: #1a73e8;
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+}
+
+/* ==================== MODE BUTTON SUBTITLE ==================== */
+.mode-btn-subtitle {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-top: 3px;
+    font-weight: normal;
+}
+
+/* ==================== ANIMATIONS ==================== */
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}

@@ -112,18 +112,25 @@
                     </div>
                 </div>
 
-                <!-- Mode Selection -->
+                <!-- Mode Selection (بهبود یافته) -->
                 <div class="sidebar-section">
                     <h3 class="section-title">
                         <i class="fas fa-cogs"></i> Mode
+                        <span class="mode-status" id="modeStatus">VIEW</span>
                     </h3>
                     <div class="mode-buttons">
                         <button class="mode-btn active" id="viewMode">
                             <i class="fas fa-eye"></i> View
+                            <div class="mode-btn-subtitle">Browse only</div>
                         </button>
                         <button class="mode-btn" id="editMode">
                             <i class="fas fa-edit"></i> Edit
+                            <div class="mode-btn-subtitle">Modify & Save</div>
                         </button>
+                    </div>
+                    <div class="mode-hint" id="modeHint">
+                        <i class="fas fa-info-circle"></i>
+                        <span>You are in <strong>View Mode</strong>. Switch to Edit to modify routes.</span>
                     </div>
                 </div>
 
@@ -178,21 +185,7 @@
                         <div class="status-message" id="importResult"></div>
                     </div>
                 </div>
-
-                <!-- Saved Routes -->
-                <div class="sidebar-section">
-                    <h3 class="section-title">
-                        <i class="fas fa-bookmark"></i> Saved Routes
-                    </h3>
-                    <button class="btn btn-secondary" id="loadRoutes">
-                        <i class="fas fa-sync"></i> Load Routes
-                    </button>
-                    <div class="saved-routes-list" id="routesList">
-                        <p style="color: var(--text-light); font-size: 14px; text-align: center; padding: 20px;">
-                            No saved routes yet
-                        </p>
-                    </div>
-                </div>
+                <!-- بخش Saved Routes از اینجا حذف شده است -->
             </div>
         </aside>
 
@@ -293,6 +286,59 @@
         </div>
     </div>
 
+    <!-- SAVE ROUTE MODAL (جدید) -->
+    <div class="save-route-modal" id="saveRouteModal">
+        <div class="save-route-content">
+            <div class="save-route-header">
+                <h2><i class="fas fa-save" id="saveModalIcon"></i> <span id="saveModalTitle">Save Route</span></h2>
+                <button class="close-search-modal" id="closeSaveModal">
+                    &times;
+                </button>
+            </div>
+            
+            <div class="save-route-body">
+                <div class="form-group">
+                    <label for="routeNameInput" style="display: block; margin-bottom: 8px; font-weight: 600; color: #202124;">
+                        Route Name
+                    </label>
+                    <input type="text" id="routeNameInput" class="route-name-input" 
+                           placeholder="Enter a descriptive name for this route">
+                </div>
+                
+                <div class="save-option-group" id="saveOptionsGroup">
+                    <div class="save-option">
+                        <input type="radio" id="saveOptionNew" name="saveOption" value="new" checked>
+                        <label for="saveOptionNew">
+                            <i class="fas fa-file-alt"></i> Save as New Route
+                        </label>
+                    </div>
+                    <div class="save-option-desc">
+                        Create a new route with this name. Existing routes will not be affected.
+                    </div>
+                    
+                    <div class="save-option">
+                        <input type="radio" id="saveOptionOverwrite" name="saveOption" value="overwrite">
+                        <label for="saveOptionOverwrite">
+                            <i class="fas fa-sync-alt"></i> Overwrite Existing Route
+                        </label>
+                    </div>
+                    <div class="save-option-desc">
+                        Replace an existing route with the same name.
+                    </div>
+                </div>
+                
+                <div class="save-actions">
+                    <button class="save-btn save-btn-cancel" id="cancelSaveBtn">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button class="save-btn save-btn-confirm" id="confirmSaveBtn">
+                        <i class="fas fa-check"></i> Save Route
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/ol@8.2.0/dist/ol.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -301,70 +347,305 @@
         // ==================== INITIALIZATION ====================
         console.log('🚀 FlightFuel Application Initializing...');
 
-// ==================== GLOBALS ====================
-const map = new ol.Map({
-    target: 'map',
-    layers: [
-        new ol.layer.Tile({
-            source: new ol.source.OSM({
-                url: 'https://{a-c}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
-            })
-        })
-    ],
-    view: new ol.View({
-        center: ol.proj.fromLonLat([51.3890, 35.6892]),
-        zoom: 5
-    }),
-    controls: []
-});
-// ==================== AIRPORT LAYER (FIXED) ====================
-const airportSource = new ol.source.Vector({
-    loader: function(extent, resolution, projection) {
-        fetch('/api/airports/')
-            .then(response => response.json())
-            .then(data => {
-                try {
-                    // اطمینان از ساختار صحیح GeoJSON
-                    if (data && data.features) {
-                        // اگر featureها type ندارند، اضافه کن
-                        data.features.forEach(feature => {
-                            if (feature && !feature.type) {
-                                feature.type = 'Feature';
-                            }
-                            if (feature && !feature.properties) {
-                                feature.properties = {};
-                            }
-                        });
-                        
-                        const features = new ol.format.GeoJSON().readFeatures(data, {
-                            featureProjection: 'EPSG:3857'
-                        });
-                        airportSource.addFeatures(features);
-                        console.log(`✅ Airports loaded: ${features.length} features`);
-                    }
-                } catch (e) {
-                    console.error('❌ Error parsing airport GeoJSON:', e);
-                }
-            })
-            .catch(error => {
-                console.error('❌ Failed to fetch airports:', error);
-            });
-    },
-    strategy: ol.loadingstrategy.bbox
-});
+        // ==================== GLOBALS ====================
+        const map = new ol.Map({
+            target: 'map',
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM({
+                        url: 'https://{a-c}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+                    })
+                })
+            ],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([51.3890, 35.6892]),
+                zoom: 5
+            }),
+            controls: []
+        });
 
-const airportLayer = new ol.layer.Vector({
-    source: airportSource,
-    visible: true,
-    style: new ol.style.Style({
-        image: new ol.style.Circle({
-            radius: 6,
-            fill: new ol.style.Fill({color: '#1a73e8'}),
-            stroke: new ol.style.Stroke({color: 'white', width: 2})
-        })
-    })
-});
-map.addLayer(airportLayer);
+        // ==================== SAVE ROUTE SYSTEM (جدید) ====================
+        let currentRouteToSave = null;
+        let currentSaveAction = ''; // 'save' or 'saveAs'
+
+        function showSaveRouteModal(isSaveAs = false) {
+            currentSaveAction = isSaveAs ? 'saveAs' : 'save';
+            
+            const modal = document.getElementById('saveRouteModal');
+            const modalTitle = document.getElementById('saveModalTitle');
+            const modalIcon = document.getElementById('saveModalIcon');
+            const saveOptionsGroup = document.getElementById('saveOptionsGroup');
+            const confirmBtn = document.getElementById('confirmSaveBtn');
+            
+            if (isSaveAs) {
+                modalTitle.textContent = 'Save As New Route';
+                confirmBtn.innerHTML = '<i class="fas fa-check"></i> Save As New';
+                saveOptionsGroup.style.display = 'none';
+            } else {
+                modalTitle.textContent = 'Save Route';
+                confirmBtn.innerHTML = '<i class="fas fa-check"></i> Save Route';
+                saveOptionsGroup.style.display = 'block';
+            }
+            
+            // تنظیم نام پیشنهادی
+            const routeNameInput = document.getElementById('routeNameInput');
+            if (currentRouteToSave && currentRouteToSave.departure && currentRouteToSave.arrival) {
+                routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival} Route`;
+            } else {
+                routeNameInput.value = '';
+            }
+            
+            // انتخاب گزینه پیش‌فرض
+            document.getElementById('saveOptionNew').checked = true;
+            
+            modal.classList.add('active');
+            routeNameInput.focus();
+            routeNameInput.select();
+        }
+
+        function closeSaveRouteModal() {
+            document.getElementById('saveRouteModal').classList.remove('active');
+            currentRouteToSave = null;
+            currentSaveAction = '';
+        }
+
+        async function executeSaveWithName() {
+            try {
+                const routeName = document.getElementById('routeNameInput').value.trim();
+                if (!routeName) {
+                    showStatus('Please enter a route name', 'error');
+                    return;
+                }
+                
+                if (!currentRouteToSave) {
+                    showStatus('No route data to save', 'error');
+                    return;
+                }
+                
+                let saveType = 'new';
+                if (currentSaveAction === 'save') {
+                    const selectedOption = document.querySelector('input[name="saveOption"]:checked');
+                    saveType = selectedOption ? selectedOption.value : 'new';
+                }
+                
+                // آماده‌سازی داده‌ها
+                const routeData = {
+                    name: routeName,
+                    departure: currentRouteToSave.departure,
+                    arrival: currentRouteToSave.arrival,
+                    coordinates: currentRouteToSave.coordinates,
+                    total_distance: parseFloat(currentRouteToSave.totalDistance.toFixed(2)),
+                    flight_time: calculateFlightTime(currentRouteToSave.totalDistance),
+                    description: `Saved via FlightFuel on ${new Date().toLocaleString()}`
+                };
+                
+                console.log('📤 Saving route:', { routeData, saveType, action: currentSaveAction });
+                
+                // تعیین endpoint
+                let apiUrl = '/api/save-route/';
+                if (currentSaveAction === 'saveAs') {
+                    apiUrl = '/api/save-route-as/';
+                }
+                // اگر overwrite باشد، نیاز به Route ID داریم
+                // فعلاً به عنوان save جدید ذخیره می‌شود
+                
+                // ارسال به سرور
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify(routeData)
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    closeSaveRouteModal();
+                    
+                    // بروزرسانی Route فعلی با نام جدید
+                    if (currentRouteToSave.feature) {
+                        currentRouteToSave.feature.set('name', routeName);
+                        updateRouteInfo();
+                    }
+                    
+                    const actionMsg = currentSaveAction === 'saveAs' ? 'saved as new copy' : 'saved';
+                    showStatus(`✅ Route "${routeName}" ${actionMsg} successfully!`, 'success');
+                } else {
+                    showStatus(`❌ Error: ${data.message}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('❌ Save error:', error);
+                showStatus(`❌ Save failed: ${error.message}`, 'error');
+            }
+        }
+
+        // ==================== MODE MANAGEMENT (بهبود یافته) ====================
+        let currentMode = 'view';
+
+        function updateModeUI() {
+            const modeStatus = document.getElementById('modeStatus');
+            const modeHint = document.getElementById('modeHint');
+            
+            if (currentMode === 'view') {
+                document.getElementById('viewMode').classList.add('active');
+                document.getElementById('editMode').classList.remove('active');
+                
+                if (modeStatus) {
+                    modeStatus.textContent = 'VIEW';
+                    modeStatus.className = 'mode-status';
+                }
+                
+                if (modeHint) {
+                    modeHint.innerHTML = `
+                        <i class="fas fa-info-circle"></i>
+                        <span>You are in <strong>View Mode</strong>. Switch to Edit to modify routes.</span>
+                    `;
+                }
+                
+                // مخفی کردن Edit Tools
+                document.getElementById('editTools').classList.remove('active');
+                disableRouteEditing();
+                
+            } else {
+                document.getElementById('editMode').classList.add('active');
+                document.getElementById('viewMode').classList.remove('active');
+                
+                if (modeStatus) {
+                    modeStatus.textContent = 'EDIT';
+                    modeStatus.className = 'mode-status edit';
+                }
+                
+                if (modeHint) {
+                    modeHint.innerHTML = `
+                        <i class="fas fa-info-circle"></i>
+                        <span>You are in <strong>Edit Mode</strong>. You can now modify and save routes.</span>
+                    `;
+                }
+                
+                // نمایش Edit Tools
+                document.getElementById('editTools').classList.add('active');
+            }
+        }
+
+        // ==================== SAVE ROUTE (اصلاح شده) ====================
+        function saveCurrentRoute(isSaveAs = false) {
+            try {
+                console.log('💾 Save requested:', { isSaveAs });
+                
+                // بررسی وجود Route
+                const routeFeatures = routeLayer.getSource().getFeatures();
+                if (routeFeatures.length === 0) {
+                    showStatus('❌ No route to save', 'error');
+                    return;
+                }
+                
+                const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+                if (!latestRouteFeature) {
+                    showStatus('❌ Route feature not found', 'error');
+                    return;
+                }
+                
+                // بررسی geometry
+                const geometry = latestRouteFeature.getGeometry();
+                if (!geometry) {
+                    showStatus('❌ Route has no geometry', 'error');
+                    return;
+                }
+                
+                // محاسبه مختصات و مسافت
+                const coordinates = geometry.getCoordinates();
+                const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
+                
+                let totalDistance = 0;
+                for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
+                    const coord1 = lonLatCoordinates[i];
+                    const coord2 = lonLatCoordinates[i + 1];
+                    totalDistance += calculateDistance(coord1, coord2);
+                }
+                
+                // بررسی departure/arrival
+                const departure = $('#departureSelect').val();
+                const arrival = $('#arrivalSelect').val();
+                
+                if (!departure || !arrival) {
+                    showStatus('❌ Please select departure and arrival airports', 'error');
+                    return;
+                }
+                
+                // ذخیره اطلاعات برای استفاده در Modal
+                currentRouteToSave = {
+                    isSaveAs: isSaveAs,
+                    coordinates: lonLatCoordinates,
+                    totalDistance: totalDistance,
+                    departure: departure,
+                    arrival: arrival,
+                    feature: latestRouteFeature
+                };
+                
+                // نمایش Modal برای پرسیدن نام
+                showSaveRouteModal(isSaveAs);
+                
+            } catch (error) {
+                console.error('❌ Error in saveCurrentRoute:', error);
+                showStatus(`❌ Save error: ${error.message}`, 'error');
+            }
+        }
+
+        // ==================== بقیه کدهای بدون تغییر ====================
+        // ==================== AIRPORT LAYER ====================
+        const airportSource = new ol.source.Vector({
+            loader: function(extent, resolution, projection) {
+                fetch('/api/airports/')
+                    .then(response => response.json())
+                    .then(data => {
+                        try {
+                            if (data && data.features) {
+                                data.features.forEach(feature => {
+                                    if (feature && !feature.type) {
+                                        feature.type = 'Feature';
+                                    }
+                                    if (feature && !feature.properties) {
+                                        feature.properties = {};
+                                    }
+                                });
+                                
+                                const features = new ol.format.GeoJSON().readFeatures(data, {
+                                    featureProjection: 'EPSG:3857'
+                                });
+                                airportSource.addFeatures(features);
+                                console.log(`✅ Airports loaded: ${features.length} features`);
+                            }
+                        } catch (e) {
+                            console.error('❌ Error parsing airport GeoJSON:', e);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('❌ Failed to fetch airports:', error);
+                    });
+            },
+            strategy: ol.loadingstrategy.bbox
+        });
+
+        const airportLayer = new ol.layer.Vector({
+            source: airportSource,
+            visible: true,
+            style: new ol.style.Style({
+                image: new ol.style.Circle({
+                    radius: 6,
+                    fill: new ol.style.Fill({color: '#1a73e8'}),
+                    stroke: new ol.style.Stroke({color: 'white', width: 2})
+                })
+            })
+        });
+        map.addLayer(airportLayer);
 
         const waypointLayer = new ol.layer.Vector({
             source: new ol.source.Vector({
@@ -461,27 +742,27 @@ map.addLayer(airportLayer);
         });
         map.addLayer(routeLayer);
 
-// ==================== TOOLTIPS ====================
-const firTooltipElement = document.createElement('div');
-firTooltipElement.className = 'fir-tooltip';
-const firTooltipOverlay = new ol.Overlay({
-    element: firTooltipElement,
-    positioning: 'bottom-center',
-    offset: [0, -10],
-    stopEvent: false
-});
-map.addOverlay(firTooltipOverlay);
+        // ==================== TOOLTIPS ====================
+        const firTooltipElement = document.createElement('div');
+        firTooltipElement.className = 'fir-tooltip';
+        const firTooltipOverlay = new ol.Overlay({
+            element: firTooltipElement,
+            positioning: 'bottom-center',
+            offset: [0, -10],
+            stopEvent: false
+        });
+        map.addOverlay(firTooltipOverlay);
 
-const wpTooltipElement = document.createElement('div');
-wpTooltipElement.className = 'wp-tooltip';
-const wpTooltipOverlay = new ol.Overlay({
-    element: wpTooltipElement,
-    positioning: 'bottom-center',
-    offset: [0, -15],
-    stopEvent: false
-});
-map.addOverlay(wpTooltipOverlay);
-// Route Tooltip اینجا اضافه نمی‌شود - بعداً به صورت lazy ایجاد می‌شود
+        const wpTooltipElement = document.createElement('div');
+        wpTooltipElement.className = 'wp-tooltip';
+        const wpTooltipOverlay = new ol.Overlay({
+            element: wpTooltipElement,
+            positioning: 'bottom-center',
+            offset: [0, -15],
+            stopEvent: false
+        });
+        map.addOverlay(wpTooltipOverlay);
+        // Route Tooltip will be created lazily
         
 
         // ==================== MAP INTERACTIONS ====================
@@ -554,52 +835,52 @@ map.addOverlay(wpTooltipOverlay);
         async function convertToIcaoIfNeeded(code) {
             code = code.toUpperCase().trim();
             
-            // اگر قبلاً ICAO هست (۴ حرفی)، همون رو برگردون
+            // If already ICAO (4 letters)
             if (code.length === 4 && /^[A-Z]+$/.test(code)) {
                 console.log(`✅ ${code} is already ICAO`);
                 return code;
             }
             
-            // اگر IATA هست (۳ حرفی)
+            // If IATA (3 letters)
             if (code.length === 3 && /^[A-Z]+$/.test(code)) {
                 try {
-                    // جستجو در کش airports
+                    // Search in airports cache
                     const airports = await getAirportsCache();
                     const airport = airports.find(a => a.iata === code);
                     
                     if (airport && airport.icao) {
-                        console.log(`✅ تبدیل IATA به ICAO: ${code} → ${airport.icao}`);
+                        console.log(`✅ Converted IATA to ICAO: ${code} → ${airport.icao}`);
                         return airport.icao;
                     }
                     
-                    // اگر در کش نبود، از API بپرس
+                    // If not in cache, query API
                     const response = await fetch(`/api/airports/search/?code=${code}`);
                     if (response.ok) {
                         const data = await response.json();
                         if (data.icao) {
-                            console.log(`✅ تبدیل IATA به ICAO از API: ${code} → ${data.icao}`);
+                            console.log(`✅ Converted IATA to ICAO via API: ${code} → ${data.icao}`);
                             return data.icao;
                         }
                     }
                     
-                    console.warn(`⚠️ کد IATA پیدا نشد: ${code}`);
-                    return code; // اگر تبدیل ممکن نبود، همون کد رو برگردون
+                    console.warn(`⚠️ IATA code not found: ${code}`);
+                    return code; // Return original if conversion fails
                     
                 } catch (error) {
-                    console.warn(`⚠️ خطا در تبدیل ${code}:`, error);
-                    return code; // در صورت خطا، همون کد رو برگردون
+                    console.warn(`⚠️ Error converting ${code}:`, error);
+                    return code; // Return original on error
                 }
             }
             
-            // برای کدهای دیگر (مثلاً ۵ حرفی یا ...)
+            // For other codes (e.g., 5 letters or more)
             return code;
         }
 
         async function getAirportsCache() {
             const CACHE_KEY = 'airports_data';
-            const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 ساعت
+            const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
             
-            // چک کردن کش
+            // Check cache
             const cached = localStorage.getItem(CACHE_KEY);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
@@ -608,7 +889,7 @@ map.addOverlay(wpTooltipOverlay);
                 }
             }
             
-            // لود از API
+            // Load from API
             try {
                 const response = await fetch('/api/airports/');
                 if (response.ok) {
@@ -621,7 +902,7 @@ map.addOverlay(wpTooltipOverlay);
                         country: f.properties.country
                     }));
                     
-                    // ذخیره در کش
+                    // Save to cache
                     localStorage.setItem(CACHE_KEY, JSON.stringify({
                         data: airports,
                         timestamp: Date.now()
@@ -643,7 +924,7 @@ map.addOverlay(wpTooltipOverlay);
                 const originInput = document.getElementById('searchOrigin').value.trim().toUpperCase();
                 const destinationInput = document.getElementById('searchDestination').value.trim().toUpperCase();
                 
-                // اعتبارسنجی ساده
+                // Simple validation
                 if (!originInput || !destinationInput) {
                     showStatus('Please enter both origin and destination', 'error');
                     return;
@@ -654,22 +935,30 @@ map.addOverlay(wpTooltipOverlay);
                     return;
                 }
                 
-                // تبدیل IATA به ICAO
+                // Convert IATA to ICAO
                 const originCode = await convertToIcaoIfNeeded(originInput);
                 const destinationCode = await convertToIcaoIfNeeded(destinationInput);
                 
-                console.log(`🔍 جستجوی مسیر: ${originInput} → ${originCode}, ${destinationInput} → ${destinationCode}`);
+                console.log(`🔍 Route search: ${originInput} → ${originCode}, ${destinationInput} → ${destinationCode}`);
                 
-                // نمایش loading
+                // Get DOM elements safely
                 const loadingSpinner = document.getElementById('searchLoadingSpinner');
                 const searchButton = document.getElementById('executeRouteSearch');
                 const resultsContainer = document.getElementById('searchResultsContent');
                 
+                // Safety check for DOM elements
+                if (!loadingSpinner || !searchButton || !resultsContainer) {
+                    console.error('❌ Required DOM elements for search not found!');
+                    showStatus('System error: UI components missing', 'error');
+                    return;
+                }
+                
+                // Show loading
                 loadingSpinner.classList.add('active');
                 searchButton.disabled = true;
                 resultsContainer.innerHTML = '';
                 
-                // سرچ با کدهای تبدیل شده
+                // Search with converted codes
                 const response = await fetch(`/api/route-search/?origin=${originCode}&destination=${destinationCode}`);
                 
                 if (!response.ok) {
@@ -694,10 +983,10 @@ map.addOverlay(wpTooltipOverlay);
                     `;
                     document.getElementById('resultsCount').textContent = '0';
                 } else {
-                    // نمایش نتایج
+                    // Display results
                     displayRouteSearchResults(data.routes || [], originInput, destinationInput, data);
                     
-                    // نمایش پیام تبدیل
+                    // Show conversion message
                     if (originInput !== originCode || destinationInput !== destinationCode) {
                         showStatus(
                             `IATA converted: ${originInput}→${originCode}, ${destinationInput}→${destinationCode}`,
@@ -711,22 +1000,28 @@ map.addOverlay(wpTooltipOverlay);
                 const searchButton = document.getElementById('executeRouteSearch');
                 const resultsContainer = document.getElementById('searchResultsContent');
                 
-                loadingSpinner.classList.remove('active');
-                searchButton.disabled = false;
+                // Safety check before using elements
+                if (loadingSpinner) loadingSpinner.classList.remove('active');
+                if (searchButton) searchButton.disabled = false;
                 
                 console.error('❌ Route search error:', error);
                 
-                resultsContainer.innerHTML = `
-                    <div class="no-results">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <h4>Search Error</h4>
-                        <p>Failed to search routes. Please try again.</p>
-                        <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
-                            Error: ${error.message}
-                        </p>
-                    </div>
-                `;
-                document.getElementById('resultsCount').textContent = '0';
+                if (resultsContainer) {
+                    resultsContainer.innerHTML = `
+                        <div class="no-results">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <h4>Search Error</h4>
+                            <p>Failed to search routes. Please try again.</p>
+                            <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
+                                Error: ${error.message}
+                            </p>
+                        </div>
+                    `;
+                }
+                
+                if (document.getElementById('resultsCount')) {
+                    document.getElementById('resultsCount').textContent = '0';
+                }
                 
                 showStatus('Error searching routes', 'error');
             }
@@ -735,6 +1030,8 @@ map.addOverlay(wpTooltipOverlay);
         function displayRouteSearchResults(routes, originalOrigin, originalDestination, data = {}) {
             const resultsContainer = document.getElementById('searchResultsContent');
             const resultsCount = document.getElementById('resultsCount');
+            
+            if (!resultsContainer || !resultsCount) return;
             
             if (!routes || routes.length === 0) {
                 let searchInfo = '';
@@ -765,7 +1062,7 @@ map.addOverlay(wpTooltipOverlay);
             
             resultsCount.textContent = routes.length;
             
-            // نمایش اطلاعات تبدیل
+            // Show conversion info
             let conversionInfo = '';
             if (data.search) {
                 const { origin_icao, destination_icao } = data.search;
@@ -850,28 +1147,41 @@ map.addOverlay(wpTooltipOverlay);
 
         function openRouteSearchModal() {
             const modal = document.getElementById('routeSearchModal');
+            if (!modal) return;
+            
             modal.classList.add('active');
             document.getElementById('searchOrigin').focus();
             
-            // پاک کردن نتایج قبلی
-            document.getElementById('searchResultsContent').innerHTML = `
-                <div class="no-results">
-                    <i class="fas fa-route"></i>
-                    <h4>No Search Yet</h4>
-                    <p>Enter origin and destination airport codes (IATA or ICAO) to search for saved routes.</p>
-                </div>
-            `;
-            document.getElementById('resultsCount').textContent = '0';
+            // Clear previous results
+            const resultsContent = document.getElementById('searchResultsContent');
+            if (resultsContent) {
+                resultsContent.innerHTML = `
+                    <div class="no-results">
+                        <i class="fas fa-route"></i>
+                        <h4>No Search Yet</h4>
+                        <p>Enter origin and destination airport codes (IATA or ICAO) to search for saved routes.</p>
+                    </div>
+                `;
+            }
+            
+            const resultsCount = document.getElementById('resultsCount');
+            if (resultsCount) {
+                resultsCount.textContent = '0';
+            }
         }
 
         function closeRouteSearchModal() {
             const modal = document.getElementById('routeSearchModal');
-            modal.classList.remove('active');
+            if (modal) {
+                modal.classList.remove('active');
+            }
         }
 
         function swapSearchInputs() {
             const originInput = document.getElementById('searchOrigin');
             const destinationInput = document.getElementById('searchDestination');
+            
+            if (!originInput || !destinationInput) return;
             
             const temp = originInput.value;
             originInput.value = destinationInput.value;
@@ -909,97 +1219,96 @@ map.addOverlay(wpTooltipOverlay);
                 });
         };
 
-// ==================== VIEW ROUTE DETAILS ====================
-window.viewRouteDetails = function(routeId) {
-    console.log('📋 Loading details for route ID:', routeId);
-    
-    // Show loading on button
-    var clickedBtn = event.target.closest('.view-details-btn');
-    var originalHtml = clickedBtn.innerHTML;
-    clickedBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
-    clickedBtn.disabled = true;
-    
-    // Request to new API
-    fetch('/api/get-route/' + routeId + '/')
-        .then(function(response) {
-            if (!response.ok) {
-                throw new Error('HTTP error: ' + response.status);
-            }
-            return response.json();
-        })
-        .then(function(data) {
-            // Restore button to original state
-            clickedBtn.innerHTML = originalHtml;
-            clickedBtn.disabled = false;
+        // ==================== VIEW ROUTE DETAILS ====================
+        window.viewRouteDetails = function(routeId) {
+            console.log('📋 Loading details for route ID:', routeId);
             
-            if (data.status === 'success') {
-                var route = data.route;
-                console.log('✅ Route details loaded:', route);
-                
-                // Display information
-                var message = '🛫 ROUTE DETAILS (Read-Only)\n' +
-                    '━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                    '📌 Route Name: ' + (route.name || 'Unnamed Route') + '\n' +
-                    '📏 Total Distance: ' + (route.total_distance || '0') + ' NM\n';
-                
-                // Display Waypoints information
-                var waypointsInfo = '📍 Waypoints Count: ' + (route.waypoints ? route.waypoints.length : 0) + '\n';
-                
-                // If waypoints exist, show their names
-                if (route.waypoints && route.waypoints.length > 0) {
-                    if (route.waypoints.length <= 8) {
-                        // Show all waypoints if 8 or less
-                        waypointsInfo += '   └─ ' + route.waypoints.join(' → ') + '\n';
-                    } else {
-                        // Show first 3, then "...", then last 2 waypoints if more than 8
-                        waypointsInfo += '   └─ ' + 
-                            route.waypoints.slice(0, 3).join(' → ') + 
-                            ' ... → ' + 
-                            route.waypoints.slice(-2).join(' → ') + '\n';
+            // Show loading on button
+            var clickedBtn = event.target.closest('.view-details-btn');
+            if (!clickedBtn) return;
+            
+            var originalHtml = clickedBtn.innerHTML;
+            clickedBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+            clickedBtn.disabled = true;
+            
+            // Request to API
+            fetch('/api/get-route/' + routeId + '/')
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP error: ' + response.status);
                     }
-                }
-                
-                message += waypointsInfo;
-                
-                // Display FIR information
-                if (route.fir_count > 0) {
-                    message += '🏢 Flight Info Regions (FIR): ' + route.fir_count + '\n';
+                    return response.json();
+                })
+                .then(function(data) {
+                    // Restore button
+                    clickedBtn.innerHTML = originalHtml;
+                    clickedBtn.disabled = false;
                     
-                    // If FIR list is available, show details
-                    if (route.fir_list && route.fir_list.length > 0) {
-                        message += '   └─ Passes through: ';
-                        var firNames = route.fir_list.map(function(fir) {
-                            return fir.identifier + ' (' + fir.name + ')';
-                        });
-                        message += firNames.join(' → ') + '\n';
+                    if (data.status === 'success') {
+                        var route = data.route;
+                        console.log('✅ Route details loaded:', route);
+                        
+                        // Display information
+                        var message = '🛫 ROUTE DETAILS (Read-Only)\n' +
+                            '━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+                            '📌 Route Name: ' + (route.name || 'Unnamed Route') + '\n' +
+                            '📏 Total Distance: ' + (route.total_distance || '0') + ' NM\n';
+                        
+                        // Waypoints information
+                        var waypointsInfo = '📍 Waypoints Count: ' + (route.waypoints ? route.waypoints.length : 0) + '\n';
+                        
+                        if (route.waypoints && route.waypoints.length > 0) {
+                            if (route.waypoints.length <= 8) {
+                                waypointsInfo += '   └─ ' + route.waypoints.join(' → ') + '\n';
+                            } else {
+                                waypointsInfo += '   └─ ' + 
+                                    route.waypoints.slice(0, 3).join(' → ') + 
+                                    ' ... → ' + 
+                                    route.waypoints.slice(-2).join(' → ') + '\n';
+                            }
+                        }
+                        
+                        message += waypointsInfo;
+                        
+                        // FIR information
+                        if (route.fir_count > 0) {
+                            message += '🏢 Flight Info Regions (FIR): ' + route.fir_count + '\n';
+                            
+                            if (route.fir_list && route.fir_list.length > 0) {
+                                message += '   └─ Passes through: ';
+                                var firNames = route.fir_list.map(function(fir) {
+                                    return fir.identifier + ' (' + fir.name + ')';
+                                });
+                                message += firNames.join(' → ') + '\n';
+                            }
+                        } else {
+                            message += '🏢 Flight Info Regions (FIR): N/A\n';
+                        }
+                        
+                        message += 
+                            '━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+                            '✈️ Departure: ' + route.departure + '\n' +
+                            '✈️ Arrival: ' + route.arrival + '\n' +
+                            '⏱️ Flight Time: ' + (route.flight_time || 'N/A') + '\n' +
+                            '📅 Created: ' + (route.created_at || 'Unknown') + '\n' +
+                            '👤 Created By: ' + (route.created_by || 'System') + '\n';
+                        
+                        alert(message);
+                        
+                    } else {
+                        alert('❌ Error: ' + (data.message || 'Failed to load route details'));
                     }
-                } else {
-                    message += '🏢 Flight Info Regions (FIR): N/A\n';
-                }
-                
-                message += 
-                    '━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                    '✈️ Departure: ' + route.departure + '\n' +
-                    '✈️ Arrival: ' + route.arrival + '\n' +
-                    '⏱️ Flight Time: ' + (route.flight_time || 'N/A') + '\n' +
-                    '📅 Created: ' + (route.created_at || 'Unknown') + '\n' +
-                    '👤 Created By: ' + (route.created_by || 'System') + '\n';
-                
-                alert(message);
-                
-            } else {
-                alert('❌ Error: ' + (data.message || 'Failed to load route details'));
-            }
-        })
-        .catch(function(error) {
-            // Restore button to original state
-            clickedBtn.innerHTML = originalHtml;
-            clickedBtn.disabled = false;
-            
-            console.error('❌ Detail fetch error:', error);
-            alert('⚠️ Network Error: ' + error.message);
-        });
-};
+                })
+                .catch(function(error) {
+                    // Restore button
+                    clickedBtn.innerHTML = originalHtml;
+                    clickedBtn.disabled = false;
+                    
+                    console.error('❌ Detail fetch error:', error);
+                    alert('⚠️ Network Error: ' + error.message);
+                });
+        };
+
         // ==================== SHOW DIRECT ROUTE FUNCTION ====================
         function showDirectRoute(departure, arrival) {
             console.log('Creating route from', departure, 'to', arrival);
@@ -1080,67 +1389,68 @@ window.viewRouteDetails = function(routeId) {
                 });
         }
 
-function loadRouteOnMap(route) {
-    console.log('🔍 لود کردن Route:', route); // این خط لاگ می‌اندازد
-    
-    routeLayer.getSource().clear();
-    
-    if (!route.coordinates || !Array.isArray(route.coordinates)) {
-        showStatus('Error: Route has no valid coordinates data', 'error');
-        return;
-    }
-    
-    let coordinatesData = route.coordinates;
-    if (typeof coordinatesData === 'string') {
-        try {
-            coordinatesData = JSON.parse(coordinatesData);
-        } catch (e) {
-            console.error('Failed to parse coordinates:', e);
-            showStatus('Error: Invalid coordinates format', 'error');
-            return;
+        function loadRouteOnMap(route) {
+            console.log('🔍 Loading Route:', route);
+            
+            routeLayer.getSource().clear();
+            
+            if (!route.coordinates || !Array.isArray(route.coordinates)) {
+                showStatus('Error: Route has no valid coordinates data', 'error');
+                return;
+            }
+            
+            let coordinatesData = route.coordinates;
+            if (typeof coordinatesData === 'string') {
+                try {
+                    coordinatesData = JSON.parse(coordinatesData);
+                } catch (e) {
+                    console.error('Failed to parse coordinates:', e);
+                    showStatus('Error: Invalid coordinates format', 'error');
+                    return;
+                }
+            }
+            
+            if (!Array.isArray(coordinatesData)) {
+                showStatus('Error: Coordinates is not an array', 'error');
+                return;
+            }
+            
+            const coordinates = coordinatesData.map(coord => {
+                if (Array.isArray(coord) && coord.length >= 2) {
+                    return ol.proj.fromLonLat([coord[0], coord[1]]);
+                }
+                return ol.proj.fromLonLat([0, 0]);
+            }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
+            
+            if (coordinates.length < 2) {
+                showStatus('Error: Route has insufficient valid coordinates', 'error');
+                return;
+            }
+            
+            // Create Feature with real name
+            routeFeature = new ol.Feature({
+                geometry: new ol.geom.LineString(coordinates),
+                name: route.name || `Route ${route.departure} to ${route.arrival}`,
+                departure: route.departure,
+                arrival: route.arrival
+            });
+            
+            console.log('✅ Feature created with name:', routeFeature.get('name'));
+            
+            routeLayer.getSource().addFeature(routeFeature);
+            routeLayer.setVisible(true);
+            document.getElementById('toggleRoute').checked = true;
+            sessionStorage.setItem('toggleRoute', 'true');
+            
+            updateRouteInfoForSavedRoute(route);
+            document.getElementById('routeInfo').classList.add('active');
+            
+            $('#departureSelect').val(route.departure).trigger('change');
+            $('#arrivalSelect').val(route.arrival).trigger('change');
+            
+            zoomToRoute(coordinates);
         }
-    }
-    
-    if (!Array.isArray(coordinatesData)) {
-        showStatus('Error: Coordinates is not an array', 'error');
-        return;
-    }
-    
-    const coordinates = coordinatesData.map(coord => {
-        if (Array.isArray(coord) && coord.length >= 2) {
-            return ol.proj.fromLonLat([coord[0], coord[1]]);
-        }
-        return ol.proj.fromLonLat([0, 0]);
-    }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
-    
-    if (coordinates.length < 2) {
-        showStatus('Error: Route has insufficient valid coordinates', 'error');
-        return;
-    }
-    
-    // ساخت Feature با نام واقعی
-    routeFeature = new ol.Feature({
-        geometry: new ol.geom.LineString(coordinates),
-        name: route.name || `Route ${route.departure} to ${route.arrival}`,
-        departure: route.departure,
-        arrival: route.arrival
-    });
-    
-    console.log('✅ Feature ساخته شد با نام:', routeFeature.get('name')); // این هم لاگ می‌اندازد
-    
-    routeLayer.getSource().addFeature(routeFeature);
-    routeLayer.setVisible(true);
-    document.getElementById('toggleRoute').checked = true;
-    sessionStorage.setItem('toggleRoute', 'true');
-    
-    updateRouteInfoForSavedRoute(route);
-    document.getElementById('routeInfo').classList.add('active');
-    
-    $('#departureSelect').val(route.departure).trigger('change');
-    $('#arrivalSelect').val(route.arrival).trigger('change');
-    
-    zoomToRoute(coordinates);
-}
+
         function updateRouteInfo() {
             if (routeFeature) {
                 const geometry = routeFeature.getGeometry();
@@ -1195,8 +1505,6 @@ function loadRouteOnMap(route) {
             }
         }
 
-
-
         // ==================== MAP CONTROLS ====================
         document.getElementById('zoomIn').addEventListener('click', function() {
             const view = map.getView();
@@ -1221,234 +1529,235 @@ function loadRouteOnMap(route) {
                 duration: 500
             });
         });
-// ==================== TOOLTIP HANDLING ====================
-map.on('pointermove', function(event) {
-    const pixel = map.getEventPixel(event.originalEvent);
-    
-    firTooltipOverlay.setPosition(undefined);
-    wpTooltipOverlay.setPosition(undefined);
-    if (window.routeTooltipOverlay) {
-        window.routeTooltipOverlay.setPosition(undefined);
-    }
-    
-    if (map && map.getTarget() && map.getTarget().style) {
-        map.getTarget().style.cursor = '';
-    }
-    
-    let feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
-        if (layer === firLayer) {
-            return feature;
-        }
-        return null;
-    });
-    
-if (feature) {
-    const props = feature.getProperties();
-    const tooltipText = `
-        <div style="text-align: left; max-width: 250px;">
-            <strong style="font-size: 14px;">FIR: ${props.identifier || 'N/A'}</strong><br>
-            <span style="color: #ffcc00;">${props.name || 'N/A'}</span>
-            <hr style="margin: 8px 0; border-color: rgba(255,255,255,0.3)">
-            <div style="font-size: 12px; line-height: 1.4;">
-                <div><strong>Country:</strong> ${props.country || 'N/A'}</div>
-                <div><strong>Frequency:</strong> ${props.frequency || 'N/A'}</div>
-                <div><strong>Altitude:</strong> ${props.lower_limit || '0'}-${props.upper_limit || '99999'} ft</div>
-                <div><strong>ICAO Region:</strong> ${props.icao_region || 'N/A'}</div>
-                <div><strong>Area:</strong> ${props.area_km2 ? props.area_km2.toLocaleString() + ' km²' : 'N/A'}</div>
-            </div>
-        </div>
-        <div class="tooltip-arrow"></div>
-    `;
-    
-        firTooltipElement.innerHTML = tooltipText;
-        firTooltipOverlay.setPosition(event.coordinate);
-        
-        if (map && map.getTarget() && map.getTarget().style) {
-            map.getTarget().style.cursor = 'pointer';
-        }
-        return;
-    }
-    
-    feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
-        if (layer === waypointLayer || layer === airportLayer) {
-            return feature;
-        }
-        return null;
-    });
-    
-    if (feature) {
-        const props = feature.getProperties();
-        let tooltipText = '';
-        
-if (props.iata) {
-    // کوتاه کردن نام اگر خیلی طولانی است
-    const airportName = props.name || props.identifier || 'Airport';
-    const displayName = airportName.length > 30 
-        ? airportName.substring(0, 27) + '...' 
-        : airportName;
-    
-    tooltipText = `
-        <div style="text-align: left; max-width: 250px;">
-            <div style="
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                margin-bottom: 8px;
-            ">
-                <div style="
-                    width: 24px;
-                    height: 24px;
-                    background: #1a73e8;
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: white;
-                    font-size: 12px;
-                    flex-shrink: 0;
-                ">✈</div>
-                <div style="
-                    font-size: 14px;
-                    color: #1a73e8;
-                    font-weight: bold;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                    max-width: 200px;
-                " title="${airportName}">
-                    ${displayName}
-                </div>
-            </div>
-            <hr style="margin: 8px 0; border-color: rgba(255,255,255,0.3)">
-            <div style="font-size: 12px; line-height: 1.4;">
-                <div><strong style="color: #4fc3f7;">IATA:</strong> ${props.iata || 'N/A'}</div>
-                <div><strong style="color: #4fc3f7;">ICAO:</strong> ${props.icao || 'N/A'}</div>
-                <div><strong style="color: #4fc3f7;">City:</strong> ${props.city || 'N/A'}</div>
-                <div><strong style="color: #4fc3f7;">Country:</strong> ${props.country || 'N/A'}</div>
-            </div>
-            <div class="tooltip-arrow"></div>
-        </div>
-    `;
-        } else if (props.identifier) {
-            const type = props.type || 'WAYPOINT';
-            const frequency = props.frequency ? `${props.frequency} MHz` : 'N/A';
-            const elevation = props.elevation ? `${props.elevation} ft` : 'N/A';
+
+        // ==================== TOOLTIP HANDLING ====================
+        map.on('pointermove', function(event) {
+            const pixel = map.getEventPixel(event.originalEvent);
             
-            let typeIcon = '';
-            switch(type.toUpperCase()) {
-                case 'VOR': typeIcon = '🎯 VOR/DME'; break;
-                case 'NDB': typeIcon = '📻 NDB'; break;
-                case 'AIRPORT': typeIcon = '✈ AIRPORT'; break;
-                case 'FIX': typeIcon = '📍 FIX'; break;
-                default: typeIcon = '📍 ' + type;
+            firTooltipOverlay.setPosition(undefined);
+            wpTooltipOverlay.setPosition(undefined);
+            if (window.routeTooltipOverlay) {
+                window.routeTooltipOverlay.setPosition(undefined);
             }
-            
-            tooltipText = `
-                <div style="text-align: left;">
-                    <strong style="font-size: 14px; color: #FF6B35;">${typeIcon}</strong><br>
-                    <strong>${props.identifier}</strong> - ${props.name || 'Unnamed Waypoint'}<br>
-                    <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
-                    <strong>Type:</strong> ${type}<br>
-                    ${frequency !== 'N/A' ? `<strong>Frequency:</strong> ${frequency}<br>` : ''}
-                    ${elevation !== 'N/A' ? `<strong>Elevation:</strong> ${elevation}<br>` : ''}
-                    <strong>Country:</strong> ${props.country || 'N/A'}<br>
-                    ${props.magnetic_variation ? `<strong>Magnetic Var:</strong> ${props.magnetic_variation}°<br>` : ''}
-                </div>
-                <div class="tooltip-arrow"></div>
-            `;
-        }
-        
-        if (tooltipText) {
-            wpTooltipElement.innerHTML = tooltipText;
-            wpTooltipOverlay.setPosition(event.coordinate);
             
             if (map && map.getTarget() && map.getTarget().style) {
-                map.getTarget().style.cursor = 'pointer';
+                map.getTarget().style.cursor = '';
             }
-        }
-        return;
-    }
-    
-    // ========== HOVER ON ROUTE ==========
-    feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
-        if (layer === routeLayer) {
-            return feature;
-        }
-        return null;
-    });
-    
-    if (feature) {
-        // ایجاد Route Tooltip به صورت lazy
-        if (!window.routeTooltipElement) {
-            window.routeTooltipElement = document.createElement('div');
-            window.routeTooltipElement.className = 'route-tooltip';
-            window.routeTooltipOverlay = new ol.Overlay({
-                element: window.routeTooltipElement,
-                positioning: 'bottom-center',
-                offset: [0, -10],
-                stopEvent: false
+            
+            let feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+                if (layer === firLayer) {
+                    return feature;
+                }
+                return null;
             });
-            map.addOverlay(window.routeTooltipOverlay);
-        }
-        
-        const props = feature.getProperties();
-        const geometry = feature.getGeometry();
-        
-        // محاسبه مسافت
-        let totalDistance = 0;
-        if (geometry && geometry.getType() === 'LineString') {
-            const coordinates = geometry.getCoordinates();
-            for (let i = 0; i < coordinates.length - 1; i++) {
-                const coord1 = ol.proj.toLonLat(coordinates[i]);
-                const coord2 = ol.proj.toLonLat(coordinates[i + 1]);
-                totalDistance += calculateDistance(coord1, coord2);
+            
+            if (feature) {
+                const props = feature.getProperties();
+                const tooltipText = `
+                    <div style="text-align: left; max-width: 250px;">
+                        <strong style="font-size: 14px;">FIR: ${props.identifier || 'N/A'}</strong><br>
+                        <span style="color: #ffcc00;">${props.name || 'N/A'}</span>
+                        <hr style="margin: 8px 0; border-color: rgba(255,255,255,0.3)">
+                        <div style="font-size: 12px; line-height: 1.4;">
+                            <div><strong>Country:</strong> ${props.country || 'N/A'}</div>
+                            <div><strong>Frequency:</strong> ${props.frequency || 'N/A'}</div>
+                            <div><strong>Altitude:</strong> ${props.lower_limit || '0'}-${props.upper_limit || '99999'} ft</div>
+                            <div><strong>ICAO Region:</strong> ${props.icao_region || 'N/A'}</div>
+                            <div><strong>Area:</strong> ${props.area_km2 ? props.area_km2.toLocaleString() + ' km²' : 'N/A'}</div>
+                        </div>
+                    </div>
+                    <div class="tooltip-arrow"></div>
+                `;
+                
+                firTooltipElement.innerHTML = tooltipText;
+                firTooltipOverlay.setPosition(event.coordinate);
+                
+                if (map && map.getTarget() && map.getTarget().style) {
+                    map.getTarget().style.cursor = 'pointer';
+                }
+                return;
             }
-        }
-        
-        // فرمت دقیق
-        const routeName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
-        
-const tooltipHTML = `
-    <div class="route-tooltip-content">
-        <div class="route-tooltip-header">
-            <div class="route-icon">✈</div>
-            <div class="route-title">FLIGHT ROUTE</div>
-        </div>
-        <div class="tooltip-row">
-            <span class="tooltip-label">
-                <i class="fas fa-route"></i>
-                Name Route:
-            </span>
-            <span class="tooltip-value name" title="${routeName}">${routeName}</span>
-        </div>
-        <div class="tooltip-row">
-            <span class="tooltip-label">
-                <i class="fas fa-ruler"></i>
-                Distance:
-            </span>
-            <span class="tooltip-value distance">${totalDistance.toFixed(1)} NM</span>
-        </div>
-    </div>
-    <div class="tooltip-arrow"></div>
-`;
-        window.routeTooltipElement.innerHTML = tooltipHTML;
-        window.routeTooltipOverlay.setPosition(event.coordinate);
-        
-        if (map && map.getTarget() && map.getTarget().style) {
-            map.getTarget().style.cursor = 'pointer';
-        }
-        return;
-    }
-}); // <-- این خط مهم: بستن تابع pointermove
+            
+            feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+                if (layer === waypointLayer || layer === airportLayer) {
+                    return feature;
+                }
+                return null;
+            });
+            
+            if (feature) {
+                const props = feature.getProperties();
+                let tooltipText = '';
+                
+                if (props.iata) {
+                    // Shorten name if too long
+                    const airportName = props.name || props.identifier || 'Airport';
+                    const displayName = airportName.length > 30 
+                        ? airportName.substring(0, 27) + '...' 
+                        : airportName;
+                    
+                    tooltipText = `
+                        <div style="text-align: left; max-width: 250px;">
+                            <div style="
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                                margin-bottom: 8px;
+                            ">
+                                <div style="
+                                    width: 24px;
+                                    height: 24px;
+                                    background: #1a73e8;
+                                    border-radius: 50%;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    color: white;
+                                    font-size: 12px;
+                                    flex-shrink: 0;
+                                ">✈</div>
+                                <div style="
+                                    font-size: 14px;
+                                    color: #1a73e8;
+                                    font-weight: bold;
+                                    overflow: hidden;
+                                    text-overflow: ellipsis;
+                                    white-space: nowrap;
+                                    max-width: 200px;
+                                " title="${airportName}">
+                                    ${displayName}
+                                </div>
+                            </div>
+                            <hr style="margin: 8px 0; border-color: rgba(255,255,255,0.3)">
+                            <div style="font-size: 12px; line-height: 1.4;">
+                                <div><strong style="color: #4fc3f7;">IATA:</strong> ${props.iata || 'N/A'}</div>
+                                <div><strong style="color: #4fc3f7;">ICAO:</strong> ${props.icao || 'N/A'}</div>
+                                <div><strong style="color: #4fc3f7;">City:</strong> ${props.city || 'N/A'}</div>
+                                <div><strong style="color: #4fc3f7;">Country:</strong> ${props.country || 'N/A'}</div>
+                            </div>
+                            <div class="tooltip-arrow"></div>
+                        </div>
+                    `;
+                } else if (props.identifier) {
+                    const type = props.type || 'WAYPOINT';
+                    const frequency = props.frequency ? `${props.frequency} MHz` : 'N/A';
+                    const elevation = props.elevation ? `${props.elevation} ft` : 'N/A';
+                    
+                    let typeIcon = '';
+                    switch(type.toUpperCase()) {
+                        case 'VOR': typeIcon = '🎯 VOR/DME'; break;
+                        case 'NDB': typeIcon = '📻 NDB'; break;
+                        case 'AIRPORT': typeIcon = '✈ AIRPORT'; break;
+                        case 'FIX': typeIcon = '📍 FIX'; break;
+                        default: typeIcon = '📍 ' + type;
+                    }
+                    
+                    tooltipText = `
+                        <div style="text-align: left;">
+                            <strong style="font-size: 14px; color: #FF6B35;">${typeIcon}</strong><br>
+                            <strong>${props.identifier}</strong> - ${props.name || 'Unnamed Waypoint'}<br>
+                            <hr style="margin: 5px 0; border-color: rgba(255,255,255,0.3)">
+                            <strong>Type:</strong> ${type}<br>
+                            ${frequency !== 'N/A' ? `<strong>Frequency:</strong> ${frequency}<br>` : ''}
+                            ${elevation !== 'N/A' ? `<strong>Elevation:</strong> ${elevation}<br>` : ''}
+                            <strong>Country:</strong> ${props.country || 'N/A'}<br>
+                            ${props.magnetic_variation ? `<strong>Magnetic Var:</strong> ${props.magnetic_variation}°<br>` : ''}
+                        </div>
+                        <div class="tooltip-arrow"></div>
+                    `;
+                }
+                
+                if (tooltipText) {
+                    wpTooltipElement.innerHTML = tooltipText;
+                    wpTooltipOverlay.setPosition(event.coordinate);
+                    
+                    if (map && map.getTarget() && map.getTarget().style) {
+                        map.getTarget().style.cursor = 'pointer';
+                    }
+                }
+                return;
+            }
+            
+            // ========== HOVER ON ROUTE ==========
+            feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
+                if (layer === routeLayer) {
+                    return feature;
+                }
+                return null;
+            });
+            
+            if (feature) {
+                // Create Route Tooltip lazily
+                if (!window.routeTooltipElement) {
+                    window.routeTooltipElement = document.createElement('div');
+                    window.routeTooltipElement.className = 'route-tooltip';
+                    window.routeTooltipOverlay = new ol.Overlay({
+                        element: window.routeTooltipElement,
+                        positioning: 'bottom-center',
+                        offset: [0, -10],
+                        stopEvent: false
+                    });
+                    map.addOverlay(window.routeTooltipOverlay);
+                }
+                
+                const props = feature.getProperties();
+                const geometry = feature.getGeometry();
+                
+                // Calculate distance
+                let totalDistance = 0;
+                if (geometry && geometry.getType() === 'LineString') {
+                    const coordinates = geometry.getCoordinates();
+                    for (let i = 0; i < coordinates.length - 1; i++) {
+                        const coord1 = ol.proj.toLonLat(coordinates[i]);
+                        const coord2 = ol.proj.toLonLat(coordinates[i + 1]);
+                        totalDistance += calculateDistance(coord1, coord2);
+                    }
+                }
+                
+                // Format display
+                const routeName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
+                
+                const tooltipHTML = `
+                    <div class="route-tooltip-content">
+                        <div class="route-tooltip-header">
+                            <div class="route-icon">✈</div>
+                            <div class="route-title">FLIGHT ROUTE</div>
+                        </div>
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">
+                                <i class="fas fa-route"></i>
+                                Route Name:
+                            </span>
+                            <span class="tooltip-value name" title="${routeName}">${routeName}</span>
+                        </div>
+                        <div class="tooltip-row">
+                            <span class="tooltip-label">
+                                <i class="fas fa-ruler"></i>
+                                Distance:
+                            </span>
+                            <span class="tooltip-value distance">${totalDistance.toFixed(1)} NM</span>
+                        </div>
+                    </div>
+                    <div class="tooltip-arrow"></div>
+                `;
+                window.routeTooltipElement.innerHTML = tooltipHTML;
+                window.routeTooltipOverlay.setPosition(event.coordinate);
+                
+                if (map && map.getTarget() && map.getTarget().style) {
+                    map.getTarget().style.cursor = 'pointer';
+                }
+                return;
+            }
+        });
 
-// ==================== POINTER LEAVE ====================
-map.on('pointerleave', function() {
-    firTooltipOverlay.setPosition(undefined);
-    wpTooltipOverlay.setPosition(undefined);
-    if (window.routeTooltipOverlay) {
-        window.routeTooltipOverlay.setPosition(undefined);
-    }
-});
+        // ==================== POINTER LEAVE ====================
+        map.on('pointerleave', function() {
+            firTooltipOverlay.setPosition(undefined);
+            wpTooltipOverlay.setPosition(undefined);
+            if (window.routeTooltipOverlay) {
+                window.routeTooltipOverlay.setPosition(undefined);
+            }
+        });
 
         // ==================== TOOL SELECTION ====================
         function removeAllInteractions() {
@@ -1711,567 +2020,17 @@ map.on('pointerleave', function() {
             showStatus('Route editing disabled', 'info');
         }
 
-        // ==================== SAVE ROUTE ====================
-        function saveCurrentRoute(isSaveAs = false) {
-            try {
-                console.log('💾 Saving route...', { isSaveAs });
-                
-                // Get latest route feature from layer
-                const routeFeatures = routeLayer.getSource().getFeatures();
-                if (routeFeatures.length === 0) {
-                    showStatus('❌ No route to save', 'error');
-                    return;
-                }
-                
-                const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
-                if (!latestRouteFeature) {
-                    showStatus('❌ Route feature not found', 'error');
-                    return;
-                }
-                
-                // Get geometry and coordinates
-                const geometry = latestRouteFeature.getGeometry();
-                if (!geometry) {
-                    showStatus('❌ Route has no geometry', 'error');
-                    return;
-                }
-                
-                const coordinates = geometry.getCoordinates();
-                const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
-                
-                console.log('📐 Coordinates count:', lonLatCoordinates.length);
-                
-                // Calculate distance from edited coordinates
-                let totalDistance = 0;
-                for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
-                    const coord1 = lonLatCoordinates[i];
-                    const coord2 = lonLatCoordinates[i + 1];
-                    totalDistance += calculateDistance(coord1, coord2);
-                }
-                
-                // Get departure/arrival
-                const departure = $('#departureSelect').val();
-                const arrival = $('#arrivalSelect').val();
-                
-                if (!departure || !arrival) {
-                    showStatus('❌ Please select departure and arrival airports', 'error');
-                    return;
-                }
-                
-                // Prepare route data
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const routeData = {
-                    name: isSaveAs 
-                        ? `${departure}-${arrival}-${timestamp}`
-                        : `Route ${departure} to ${arrival}`,
-                    departure: departure,
-                    arrival: arrival,
-                    waypoints: [],
-                    coordinates: lonLatCoordinates,
-                    total_distance: parseFloat(totalDistance.toFixed(2)),
-                    flight_time: calculateFlightTime(totalDistance),
-                    description: isSaveAs 
-                        ? `Saved as copy on ${new Date().toLocaleString()}`
-                        : `Edited route saved on ${new Date().toLocaleString()}`
-                };
-                
-                console.log('📤 Route data to save:', routeData);
-                
-                // Determine API endpoint
-                const apiUrl = isSaveAs ? '/api/save-route-as/' : '/api/save-route/';
-                
-                // Send to server
-                fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify(routeData)
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('✅ Save response:', data);
-                    if (data.status === 'success') {
-                        const action = isSaveAs ? 'saved as new copy' : 'saved';
-                        showStatus(`✅ Route ${action} successfully! ID: ${data.route_id || data.route_id}`, 'success');
-                        loadSavedRoutes();
-                    } else {
-                        showStatus(`❌ Error: ${data.message}`, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('❌ Save error:', error);
-                    showStatus(`❌ Save failed: ${error.message}`, 'error');
-                });
-                
-            } catch (error) {
-                console.error('❌ Error in saveCurrentRoute:', error);
-                showStatus(`❌ Save error: ${error.message}`, 'error');
-            }
-        }
-
-        // ==================== LOAD SAVED ROUTES ====================
-        function loadSavedRoutes() {
-            console.log('Loading saved routes...');
-            
-            fetch('/api/get-routes/')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    console.log('Routes response:', data);
-                    if (data.status === 'success') {
-                        displayRoutesList(data.routes);
-                        showStatus(`Loaded ${data.routes.length} saved routes`, 'success');
-                    } else {
-                        showStatus('Error loading routes: ' + data.message, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Load routes error:', error);
-                    showStatus('Error loading routes: ' + error, 'error');
-                });
-        }
-
-        function displayRoutesList(routes) {
-            const routesList = document.getElementById('routesList');
-            
-            if (!routes || routes.length === 0) {
-                routesList.innerHTML = '<p style="color: var(--text-light); font-size: 14px; text-align: center; padding: 20px;">No saved routes yet</p>';
-                return;
-            }
-            
-            let html = '';
-            routes.forEach(route => {
-                const hasCoordinates = route.coordinates && Array.isArray(route.coordinates);
-                
-                html += `
-                    <div class="route-item">
-                        <div class="route-item-header">
-                            <strong>${route.name || `Route ${route.departure} to ${route.arrival}`}</strong>
-                            <div class="route-item-actions">
-                                <button class="action-btn btn-primary" onclick="window.loadRouteFromList(${route.id})">
-                                    <i class="fas fa-eye"></i> Load
-                                </button>
-                                <button class="action-btn btn-danger" onclick="deleteRoute(${route.id})">
-                                    <i class="fas fa-trash"></i> Delete
-                                </button>
-                            </div>
-                        </div>
-                        <div style="font-size: 12px; color: var(--text-light);">
-                            <div><strong>From:</strong> ${route.departure} <strong>To:</strong> ${route.arrival}</div>
-                            <div><strong>Distance:</strong> ${route.total_distance} NM</div>
-                            <div><strong>Created:</strong> ${route.created_at} by ${route.created_by || 'Unknown'}</div>
-                            <div><strong>Coordinates:</strong> ${hasCoordinates ? 'Available' : 'Not available'}</div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            routesList.innerHTML = html;
-        }
-
-        // Global function for loading routes from list
-        window.loadRouteFromList = function(routeId) {
-            console.log('Loading route:', routeId);
-            
-            fetch('/api/get-routes/')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        const route = data.routes.find(r => r.id === routeId);
-                        if (route) {
-                            routeLayer.getSource().clear();
-                            
-                            if (!route.coordinates || !Array.isArray(route.coordinates)) {
-                                showStatus('Error: Route has no valid coordinates data', 'error');
-                                return;
-                            }
-                            
-                            let coordinatesData = route.coordinates;
-                            if (typeof coordinatesData === 'string') {
-                                try {
-                                    coordinatesData = JSON.parse(coordinatesData);
-                                } catch (e) {
-                                    console.error('Failed to parse coordinates:', e);
-                                    showStatus('Error: Invalid coordinates format', 'error');
-                                    return;
-                                }
-                            }
-                            
-                            if (!Array.isArray(coordinatesData)) {
-                                showStatus('Error: Coordinates is not an array', 'error');
-                                return;
-                            }
-                            
-                            const coordinates = coordinatesData.map(coord => {
-                                if (Array.isArray(coord) && coord.length >= 2) {
-                                    return ol.proj.fromLonLat([coord[0], coord[1]]);
-                                }
-                                return ol.proj.fromLonLat([0, 0]);
-                            }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
-                            
-                            if (coordinates.length < 2) {
-                                showStatus('Error: Route has insufficient valid coordinates', 'error');
-                                return;
-                            }
-                            
-                            routeFeature = new ol.Feature({
-                                geometry: new ol.geom.LineString(coordinates),
-                                properties: {
-                                    departure: route.departure,
-                                    arrival: route.arrival
-                                }
-                            });
-                            
-                            routeLayer.getSource().addFeature(routeFeature);
-                            routeLayer.setVisible(true);
-                            document.getElementById('toggleRoute').checked = true;
-                            sessionStorage.setItem('toggleRoute', 'true');
-                            
-                            updateRouteInfo();
-                            document.getElementById('routeInfo').classList.add('active');
-                            
-                            $('#departureSelect').val(route.departure).trigger('change');
-                            $('#arrivalSelect').val(route.arrival).trigger('change');
-                            
-                            showStatus(`Route "${route.name || 'Unnamed'}" loaded successfully`, 'success');
-                        } else {
-                            showStatus('Route not found', 'error');
-                        }
-                    } else {
-                        showStatus('Error loading routes: ' + data.message, 'error');
-                    }
-                })
-                .catch(error => {
-                    console.error('Load route error:', error);
-                    showStatus('Error loading route: ' + error, 'error');
-                });
-        };
-
-        function deleteRoute(routeId) {
-            if (!confirm('Are you sure you want to delete this route?')) {
-                return;
-            }
-            
-            fetch(`/api/delete-route/${routeId}/`, {
-                method: 'DELETE',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken')
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showStatus('Route deleted successfully', 'success');
-                    loadSavedRoutes();
-                } else {
-                    showStatus('Error deleting route: ' + data.message, 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Delete error:', error);
-                showStatus('Error deleting route: ' + error, 'error');
-            });
-        }
-
-        // ==================== SEARCH FUNCTION ====================
-        document.getElementById('searchButton').addEventListener('click', function() {
-            const searchTerm = document.getElementById('globalSearch').value.trim();
-            if (!searchTerm) {
-                showStatus('Please enter a search term', 'error');
-                return;
-            }
-            
-            showStatus(`Searching for: ${searchTerm}...`, 'info');
-            
-            fetch('/api/airports/')
-                .then(response => response.json())
-                .then(data => {
-                    const airportResults = data.features.filter(airport => 
-                        airport.properties.iata.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        airport.properties.icao.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        airport.properties.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        airport.properties.city.toLowerCase().includes(searchTerm.toLowerCase())
-                    );
-                    
-                    if (airportResults.length > 0) {
-                        const result = airportResults[0];
-                        const coordinates = result.geometry.coordinates;
-                        
-                        map.getView().animate({
-                            center: ol.proj.fromLonLat(coordinates),
-                            zoom: 10,
-                            duration: 1000
-                        });
-                        
-                        waypointLayer.setVisible(true);
-                        document.getElementById('toggleWaypoints').checked = true;
-                        sessionStorage.setItem('toggleWaypoints', 'true');
-                        
-                        showStatus(`Found Airport: ${result.properties.name} (${result.properties.iata}) - Waypoints layer ON`, 'success');
-                        return Promise.reject('AIRPORT_FOUND');
-                    }
-                    
-                    return fetch('/api/fir-geojson/');
-                })
-                .then(response => {
-                    if (!response) return;
-                    
-                    return response.json().then(firData => {
-                        if (!firData || !firData.features) {
-                            showStatus('FIR data not available', 'error');
-                            return;
-                        }
-                        
-                        const firResults = firData.features.filter(fir => {
-                            if (!fir.properties) return false;
-                            const props = fir.properties;
-                            const searchLower = searchTerm.toLowerCase();
-                            
-                            return (
-                                (props.identifier && props.identifier.toLowerCase().includes(searchLower)) ||
-                                (props.name && props.name.toLowerCase().includes(searchLower)) ||
-                                (props.country && props.country.toLowerCase().includes(searchLower)) ||
-                                (props.country_code && props.country_code.toLowerCase().includes(searchLower))
-                            );
-                        });
-                        
-                        if (firResults.length > 0) {
-                            const result = firResults[0];
-                            console.log('Found FIR:', result.properties.identifier);
-                            
-                            try {
-                                if (result.geometry && result.geometry.coordinates) {
-                                    const extent = calculateFIRExtent(result.geometry);
-                                    
-                                    if (extent && extent.length === 4) {
-                                        console.log('FIR Extent calculated:', extent);
-                                        
-                                        const minLon = extent[0];
-                                        const minLat = extent[1];
-                                        const maxLon = extent[2];
-                                        const maxLat = extent[3];
-                                        
-                                        const olExtent = [
-                                            ol.proj.fromLonLat([minLon, minLat]),
-                                            ol.proj.fromLonLat([maxLon, maxLat])
-                                        ].flat();
-                                        
-                                        map.getView().fit(olExtent, {
-                                            padding: [50, 50, 50, 50],
-                                            duration: 1000,
-                                            maxZoom: 8
-                                        });
-                                        
-                                        firLayer.setVisible(true);
-                                        document.getElementById('toggleFIR').checked = true;
-                                        sessionStorage.setItem('toggleFIR', 'true');
-                                        
-                                        waypointLayer.setVisible(true);
-                                        document.getElementById('toggleWaypoints').checked = true;
-                                        sessionStorage.setItem('toggleWaypoints', 'true');
-                                        
-                                        highlightFIR(result.properties.identifier);
-                                        
-                                        showStatus(`Found FIR: ${result.properties.identifier} - ${result.properties.name} (Both layers ON)`, 'success');
-                                        return Promise.reject('FIR_FOUND');
-                                    }
-                                }
-                            } catch (e) {
-                                console.error('Error calculating FIR extent:', e);
-                            }
-                            
-                            map.getView().animate({
-                                center: ol.proj.fromLonLat([51.3890, 35.6892]),
-                                zoom: 6,
-                                duration: 1000
-                            });
-                            
-                            firLayer.setVisible(true);
-                            document.getElementById('toggleFIR').checked = true;
-                            sessionStorage.setItem('toggleFIR', 'true');
-                            
-                            waypointLayer.setVisible(true);
-                            document.getElementById('toggleWaypoints').checked = true;
-                            sessionStorage.setItem('toggleWaypoints', 'true');
-                            
-                            highlightFIR(result.properties.identifier);
-                            
-                            showStatus(`Found FIR: ${result.properties.identifier} (Using default view)`, 'success');
-                            return Promise.reject('FIR_FOUND');
-                        }
-                        
-                        return fetch('/api/waypoints/');
-                    });
-                })
-                .then(response => {
-                    if (!response) return;
-                    
-                    return response.json().then(data => {
-                        if (!data || !data.features) {
-                            showStatus('Waypoint data not available', 'error');
-                            return;
-                        }
-                        
-                        const waypointResults = data.features.filter(waypoint => {
-                            if (!waypoint.properties) return false;
-                            const props = waypoint.properties;
-                            return (
-                                (props.identifier && props.identifier.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                                (props.name && props.name.toLowerCase().includes(searchTerm.toLowerCase()))
-                            );
-                        });
-                        
-                        if (waypointResults.length > 0) {
-                            const result = waypointResults[0];
-                            const coordinates = result.geometry.coordinates;
-                            
-                            map.getView().animate({
-                                center: ol.proj.fromLonLat(coordinates),
-                                zoom: 9,
-                                duration: 1000
-                            });
-                            
-                            waypointLayer.setVisible(true);
-                            document.getElementById('toggleWaypoints').checked = true;
-                            sessionStorage.setItem('toggleWaypoints', 'true');
-                            
-                            showStatus(`Found Waypoint: ${result.properties.identifier} (${result.properties.type})`, 'success');
-                            return;
-                        }
-                        
-                        showStatus('No results found for: ' + searchTerm, 'error');
-                    });
-                })
-                .catch(error => {
-                    if (error === 'AIRPORT_FOUND' || error === 'FIR_FOUND') {
-                        return;
-                    }
-                    console.error('Search error:', error);
-                    showStatus('Search error: ' + error, 'error');
-                });
-        });
-
-        function calculateFIRExtent(geometry) {
-            if (!geometry || !geometry.coordinates) return null;
-            
-            let minLon = 180;
-            let maxLon = -180;
-            let minLat = 90;
-            let maxLat = -90;
-            
-            try {
-                const processCoordinates = (coords) => {
-                    if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-                        coords.forEach(ring => processCoordinates(ring));
-                    } else if (Array.isArray(coords[0])) {
-                        coords.forEach(coord => processCoordinates(coord));
-                    } else if (coords.length >= 2) {
-                        const lon = coords[0];
-                        const lat = coords[1];
-                        
-                        if (lon < minLon) minLon = lon;
-                        if (lon > maxLon) maxLon = lon;
-                        if (lat < minLat) minLat = lat;
-                        if (lat > maxLat) maxLat = lat;
-                    }
-                };
-                
-                processCoordinates(geometry.coordinates);
-                
-                const margin = 0.5;
-                return [
-                    minLon - margin,
-                    minLat - margin,
-                    maxLon + margin,
-                    maxLat + margin
-                ];
-                
-            } catch (e) {
-                console.error('Error in calculateFIRExtent:', e);
-                return null;
-            }
-        }
-
-        function highlightFIR(firIdentifier) {
-            const source = firLayer.getSource();
-            const features = source.getFeatures();
-            
-            features.forEach(feature => {
-                const type = feature.getGeometry().getType();
-                
-                if (type === 'Polygon' || type === 'MultiPolygon') {
-                    feature.setStyle(new ol.style.Style({
-                        stroke: new ol.style.Stroke({
-                            color: 'rgba(234, 67, 53, 0.7)',
-                            width: 2,
-                            lineDash: [5, 5]
-                        }),
-                        fill: new ol.style.Fill({
-                            color: 'rgba(234, 67, 53, 0.1)'
-                        }),
-                        text: new ol.style.Text({
-                            text: feature.get('identifier'),
-                            fill: new ol.style.Fill({color: '#ea4335'}),
-                            stroke: new ol.style.Stroke({color: 'white', width: 2}),
-                            offsetY: -20,
-                            font: 'bold 12px Arial',
-                            overflow: true
-                        })
-                    }));
-                }
-            });
-            
-            features.forEach(feature => {
-                if (feature.get('identifier') === firIdentifier) {
-                    feature.setStyle(new ol.style.Style({
-                        stroke: new ol.style.Stroke({
-                            color: '#ff0000',
-                            width: 3,
-                            lineDash: [5, 5]
-                        }),
-                        fill: new ol.style.Fill({
-                            color: 'rgba(255, 0, 0, 0.2)'
-                        }),
-                        text: new ol.style.Text({
-                            text: feature.get('identifier') + ' ★',
-                            fill: new ol.style.Fill({color: '#ff0000'}),
-                            stroke: new ol.style.Stroke({color: 'white', width: 3}),
-                            offsetY: -20,
-                            font: 'bold 13px Arial',
-                            overflow: true
-                        })
-                    }));
-                }
-            });
-        }
-
         // ==================== EVENT LISTENERS ====================
         document.getElementById('viewMode').addEventListener('click', function() {
-            document.getElementById('viewMode').classList.add('active');
-            document.getElementById('editMode').classList.remove('active');
-            document.getElementById('editTools').classList.remove('active');
-            disableRouteEditing();
-            activateTool('select');
+            currentMode = 'view';
+            updateModeUI();
             showStatus('View mode activated', 'info');
         });
 
         document.getElementById('editMode').addEventListener('click', function() {
-            document.getElementById('editMode').classList.add('active');
-            document.getElementById('viewMode').classList.remove('active');
-            document.getElementById('editTools').classList.add('active');
-            activateTool('select');
-            showStatus('Edit mode activated', 'info');
+            currentMode = 'edit';
+            updateModeUI();
+            showStatus('Edit mode activated. Enable editing to modify routes.', 'success');
         });
 
         document.getElementById('enableEdit').addEventListener('click', enableRouteEditing);
@@ -2288,6 +2047,7 @@ map.on('pointerleave', function() {
             }
         });
 
+        // ***** این listener برای دکمه Clear اضافه شده *****
         document.getElementById('clearRoute').addEventListener('click', function() {
             routeLayer.getSource().clear();
             routeFeature = null;
@@ -2301,8 +2061,6 @@ map.on('pointerleave', function() {
             disableRouteEditing();
             showStatus('Route cleared', 'info');
         });
-
-        document.getElementById('loadRoutes').addEventListener('click', loadSavedRoutes);
 
         // ==================== ROUTE SEARCH EVENT LISTENERS ====================
         document.getElementById('routeSearchBtn').addEventListener('click', openRouteSearchModal);
@@ -2328,7 +2086,7 @@ map.on('pointerleave', function() {
             }
         });
 
-        // ==================== SAVE ROUTE EVENT LISTENERS ====================
+        // ==================== SAVE ROUTE EVENT LISTENERS (بهبود یافته) ====================
         document.getElementById('saveRoute').addEventListener('click', function() {
             console.log('💾 Save Route clicked');
             saveCurrentRoute(false);
@@ -2337,6 +2095,23 @@ map.on('pointerleave', function() {
         document.getElementById('saveRouteAs').addEventListener('click', function() {
             console.log('💾 Save As clicked');
             saveCurrentRoute(true);
+        });
+
+        // ==================== SAVE MODAL EVENT LISTENERS (جدید) ====================
+        document.getElementById('closeSaveModal').addEventListener('click', closeSaveRouteModal);
+        document.getElementById('cancelSaveBtn').addEventListener('click', closeSaveRouteModal);
+        document.getElementById('confirmSaveBtn').addEventListener('click', executeSaveWithName);
+
+        document.getElementById('routeNameInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                executeSaveWithName();
+            }
+        });
+
+        document.getElementById('saveRouteModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeSaveRouteModal();
+            }
         });
 
         // ==================== LAYER CONTROLS ====================
@@ -2510,10 +2285,10 @@ map.on('pointerleave', function() {
         // ==================== FINAL INIT ====================
         initLayerControls();
         activateTool('select');
-        loadSavedRoutes();
+        updateModeUI(); // Initialize mode UI
         
-        console.log('✅ FlightFuel Application Fully Initialized');
-        showStatus('FlightFuel ready! Try searching routes with IATA (THR) or ICAO (OIII) codes.', 'success');
+        console.log('✅ FlightFuel Application Fully Initialized with Enhanced Mode & Save System');
+        showStatus('FlightFuel ready! Use Edit Mode to modify and save routes.', 'success');
     </script>
 </body>
 </html>
