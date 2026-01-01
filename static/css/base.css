@@ -1612,3 +1612,254 @@ body {
         transform: translateY(0) scale(1);
     }
 }
+/* ==================== SEARCH RESULTS POPUP ==================== */
+.search-results-popup {
+    animation: fadeIn 0.3s ease;
+}
+
+.popup-header {
+    background: linear-gradient(135deg, #1a73e8, #0d47a1);
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255,255,255,0.2);
+}
+
+.popup-header h4 {
+    margin: 0;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.close-popup {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.close-popup:hover {
+    background: rgba(255,255,255,0.1);
+    transform: scale(1.1);
+}
+
+.popup-body {
+    padding: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.result-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    margin-bottom: 8px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.result-item:hover {
+    background: #f8f9fa;
+    border-color: #1a73e8;
+    transform: translateX(5px);
+}
+
+.result-type {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.result-type.airport {
+    background: #1a73e8;
+    color: white;
+}
+
+.result-type.waypoint {
+    background: #FF6B35;
+    color: white;
+}
+
+.result-type.fir {
+    background: #ea4335;
+    color: white;
+}
+
+.result-info {
+    flex: 1;
+}
+
+.result-name {
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: 4px;
+    font-size: 14px;
+}
+
+.result-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.result-details span {
+    background: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.zoom-to-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    margin-left: 10px;
+}
+
+.zoom-to-btn:hover {
+    background: #218838;
+    transform: scale(1.1);
+}
+        /* ==================== EDIT TOOLS - SIMPLE STYLES ==================== */
+        .edit-tools {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            margin-top: 20px;
+        }
+
+        .edit-status {
+            font-size: 12px;
+            color: #dc3545;
+            margin-left: 10px;
+            font-weight: normal;
+        }
+
+        .edit-status.active {
+            color: #28a745;
+        }
+
+        .btn-edit-main {
+            width: 100%;
+            padding: 15px;
+            background: #f8f9fa;
+            border: 2px dashed #6c757d;
+            border-radius: 10px;
+            color: #6c757d;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .btn-edit-main:hover {
+            background: #e9ecef;
+            border-color: #1a73e8;
+            color: #1a73e8;
+        }
+
+        .btn-edit-main i {
+            font-size: 24px;
+        }
+
+        .btn-edit-main.active {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .btn-edit-main.active i {
+            color: #28a745;
+        }
+
+        .save-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn-save, .btn-save-as {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .btn-save {
+            background: #1a73e8;
+            color: white;
+        }
+
+        .btn-save:hover {
+            background: #0d47a1;
+        }
+
+        .btn-save-as {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-save-as:hover {
+            background: #545b62;
+        }
+
+        .edit-hint {
+            background: #e7f3ff;
+            border-radius: 8px;
+            padding: 10px 15px;
+            font-size: 13px;
+            color: #1a73e8;
+            border-left: 4px solid #1a73e8;
+        }
+
+        .edit-hint i {
+            margin-right: 8px;
+        }
+
+        .edit-hint.active {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
