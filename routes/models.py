@@ -121,12 +121,22 @@ class Route(models.Model):
     waypoints = models.JSONField(verbose_name='Waypoints', default=list)
     coordinates = models.LineStringField(srid=4326, verbose_name='Coordinates', null=True, blank=True)
     total_distance = models.FloatField(default=0, verbose_name='Total Distance (NM)')
-    flight_time = models.CharField(  # ← فیلد جدید اضافه شد
+    flight_time = models.CharField(
         max_length=20, 
         verbose_name='Flight Time (HH:MM)',
         blank=True, 
         null=True
     )
+    
+    # New field: User-defined version/code (can be word or number)
+    version = models.CharField(
+        max_length=50,
+        verbose_name='Version/Code',
+        blank=True,
+        default='',
+        help_text='User defined version, code, or number (e.g., v1, winter, emergency, 002)'
+    )
+    
     description = models.TextField(blank=True, verbose_name='Description')
     
     created_by = models.ForeignKey(
@@ -156,11 +166,31 @@ class Route(models.Model):
             models.Index(fields=['arrival']),
             models.Index(fields=['created_at']),
             models.Index(fields=['name']),
+            models.Index(fields=['version']),  # New index for version field
         ]
         ordering = ['-created_at']
+        # Unique constraint: Same departure+arrival+version cannot be duplicated
+        constraints = [
+            models.UniqueConstraint(
+                fields=['departure', 'arrival', 'version'],
+                name='unique_departure_arrival_version'
+            )
+        ]
     
     def __str__(self):
+        if self.version:
+            return f"{self.name} ({self.departure}→{self.arrival}) - {self.version}"
         return f"{self.name} ({self.departure}→{self.arrival})"
+    
+    def get_full_name(self):
+        """Get complete route name including version if exists"""
+        if self.version:
+            return f"{self.name} - {self.version}"
+        return self.name
+    
+    def get_search_name(self):
+        """Get name for search purposes: DEPARTURE-ARRIVAL"""
+        return f"{self.departure}-{self.arrival}"
     
     def get_waypoint_objects(self):
         """Get Waypoint objects from identifiers"""
@@ -173,7 +203,7 @@ class Route(models.Model):
         
         waypoint_objects = Waypoint.objects.filter(identifier__in=self.waypoints)
         
-        # مرتب‌سازی بر اساس ترتیب در waypoints
+        # Sort based on order in waypoints list
         ordered_points = []
         for wp_id in self.waypoints:
             wp = waypoint_objects.filter(identifier=wp_id).first()
@@ -196,7 +226,7 @@ class Route(models.Model):
             
             if wp1 and wp2:
                 distance_deg = wp1.location.distance(wp2.location)
-                distance_nm = distance_deg * 60.11  # به مایل دریایی
+                distance_nm = distance_deg * 60.11  # Convert to nautical miles
                 total_nm += distance_nm
         
         return round(total_nm, 2)
@@ -214,29 +244,25 @@ class Route(models.Model):
         return f"{hour_int:02d}:{minute_int:02d}"
     
     def save(self, *args, **kwargs):
-        # ۱. نام اتوماتیک با ICAO
+        # 1. Auto name: DEPARTURE-ARRIVAL (simple format for search)
         if not self.name:
-            date_str = timezone.now().strftime('%Y%m%d')
-            last_seq = Route.objects.filter(
-                Q(name__startswith=f"{self.departure}-{self.arrival}-{date_str}")
-            ).count() + 1
-            self.name = f"{self.departure}-{self.arrival}-{date_str}-{last_seq:03d}"
+            self.name = f"{self.departure}-{self.arrival}"
         
-        # ۲. مختصات اتوماتیک
+        # 2. Auto coordinates
         if self.waypoints and len(self.waypoints) >= 2:
             coords = self.calculate_coordinates()
             if coords:
                 self.coordinates = coords
         
-        # ۳. مسافت اتوماتیک
+        # 3. Auto distance
         if self.waypoints and len(self.waypoints) >= 2:
             self.total_distance = self.calculate_distance()
         
-        # ۴. زمان پرواز اتوماتیک (اضافه شد)
+        # 4. Auto flight time
         if self.total_distance > 0 and not self.flight_time:
             self.flight_time = self.calculate_flight_time()
         
-        # ۵. اضافه کردن departure و arrival به waypoints اگر نیستند
+        # 5. Add departure and arrival to waypoints if not present
         if self.waypoints:
             if self.departure not in self.waypoints:
                 self.waypoints.insert(0, self.departure)
@@ -250,26 +276,34 @@ class Route(models.Model):
     
     def get_formatted_waypoints(self):
         return " → ".join(self.waypoints) if self.waypoints else "No waypoints"
+    
+    @classmethod
+    def get_available_versions(cls, departure, arrival):
+        """Get all existing versions for a departure-arrival pair"""
+        return cls.objects.filter(
+            departure=departure,
+            arrival=arrival
+        ).exclude(version='').values_list('version', flat=True).distinct()
 
 class FlightInformationRegion(models.Model):
-    """منطقه اطلاعات پرواز (FIR) - مرز هوایی کشورها"""
+    """Flight Information Region (FIR) - Airspace boundaries"""
     
-    identifier = models.CharField(max_length=10, unique=True, verbose_name='شناسه FIR (مثال: OIIX)')
-    name = models.CharField(max_length=200, verbose_name='نام کامل FIR')
-    country = models.CharField(max_length=100, verbose_name='کشور صاحب FIR')
-    country_code = models.CharField(max_length=5, verbose_name='کد کشور ISO', blank=True)
+    identifier = models.CharField(max_length=10, unique=True, verbose_name='FIR Identifier (e.g., OIIX)')
+    name = models.CharField(max_length=200, verbose_name='Full FIR Name')
+    country = models.CharField(max_length=100, verbose_name='Country')
+    country_code = models.CharField(max_length=5, verbose_name='ISO Country Code', blank=True)
     
-    frequency = models.CharField(max_length=100, verbose_name='فرکانس‌های اصلی', blank=True)
-    emergency_frequency = models.CharField(max_length=50, default='121.5', verbose_name='فرکانس اضطراری')
+    frequency = models.CharField(max_length=100, verbose_name='Main Frequencies', blank=True)
+    emergency_frequency = models.CharField(max_length=50, default='121.5', verbose_name='Emergency Frequency')
     
-    boundary = models.GeometryField(srid=4326, verbose_name='مرز هوایی FIR')
+    boundary = models.GeometryField(srid=4326, verbose_name='FIR Boundary')
     
-    upper_limit = models.IntegerField(default=99999, verbose_name='حد بالایی (فوت)')
-    lower_limit = models.IntegerField(default=0, verbose_name='حد پایینی (فوت)')
+    upper_limit = models.IntegerField(default=99999, verbose_name='Upper Limit (ft)')
+    lower_limit = models.IntegerField(default=0, verbose_name='Lower Limit (ft)')
     
     icao_region = models.CharField(
         max_length=2, 
-        verbose_name='ناحیه ICAO',
+        verbose_name='ICAO Region',
         choices=[
             ('AS', 'Asia'),
             ('EU', 'Europe'), 
@@ -281,13 +315,13 @@ class FlightInformationRegion(models.Model):
         ]
     )
     
-    is_active = models.BooleanField(default=True, verbose_name='فعال')
-    notes = models.TextField(blank=True, verbose_name='یادداشت‌ها')
+    is_active = models.BooleanField(default=True, verbose_name='Active')
+    notes = models.TextField(blank=True, verbose_name='Notes')
     
     class Meta:
         db_table = 'fir_regions'
-        verbose_name = 'منطقه اطلاعات پرواز (FIR)'
-        verbose_name_plural = 'مناطق اطلاعات پرواز (FIR)'
+        verbose_name = 'Flight Information Region (FIR)'
+        verbose_name_plural = 'Flight Information Regions (FIR)'
         ordering = ['identifier']
         indexes = [
             models.Index(fields=['country']),

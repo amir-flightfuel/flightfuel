@@ -398,7 +398,7 @@
             // تنظیم نام پیشنهادی
             const routeNameInput = document.getElementById('routeNameInput');
             if (currentRouteToSave && currentRouteToSave.departure && currentRouteToSave.arrival) {
-                routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival} Route`;
+                routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
             } else {
                 routeNameInput.value = '';
             }
@@ -417,81 +417,114 @@
             currentSaveAction = '';
         }
 
-        async function executeSaveWithName() {
-            try {
-                const routeName = document.getElementById('routeNameInput').value.trim();
-                if (!routeName) {
-                    showStatus('Please enter a route name', 'error');
-                    return;
-                }
-                
-                if (!currentRouteToSave) {
-                    showStatus('No route data to save', 'error');
-                    return;
-                }
-                
-                let saveType = 'new';
-                if (currentSaveAction === 'save') {
-                    const selectedOption = document.querySelector('input[name="saveOption"]:checked');
-                    saveType = selectedOption ? selectedOption.value : 'new';
-                }
-                
-                // آماده‌سازی داده‌ها
-                const routeData = {
-                    name: routeName,
-                    departure: currentRouteToSave.departure,
-                    arrival: currentRouteToSave.arrival,
-                    coordinates: currentRouteToSave.coordinates,
-                    total_distance: parseFloat(currentRouteToSave.totalDistance.toFixed(2)),
-                    flight_time: calculateFlightTime(currentRouteToSave.totalDistance),
-                    description: `Saved via FlightFuel on ${new Date().toLocaleString()}`
-                };
-                
-                console.log('📤 Saving route:', { routeData, saveType, action: currentSaveAction });
-                
-                // تعیین endpoint
-                let apiUrl = '/api/save-route/';
-                if (currentSaveAction === 'saveAs') {
-                    apiUrl = '/api/save-route-as/';
-                }
-                
-                // ارسال به سرور
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCookie('csrftoken')
-                    },
-                    body: JSON.stringify(routeData)
-                });
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errorText}`);
-                }
-                
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    closeSaveRouteModal();
-                    
-                    // بروزرسانی Route فعلی با نام جدید
-                    if (currentRouteToSave.feature) {
-                        currentRouteToSave.feature.set('name', routeName);
-                        updateRouteInfo();
-                    }
-                    
-                    const actionMsg = currentSaveAction === 'saveAs' ? 'saved as new copy' : 'saved';
-                    showStatus(`✅ Route "${routeName}" ${actionMsg} successfully!`, 'success');
-                } else {
-                    showStatus(`❌ Error: ${data.message}`, 'error');
-                }
-                
-            } catch (error) {
-                console.error('❌ Save error:', error);
-                showStatus(`❌ Save failed: ${error.message}`, 'error');
-            }
+async function executeSaveWithName() {
+    try {
+        console.log('🔍 Starting save process...');
+        
+        // Check if route name is provided
+        const routeName = document.getElementById('routeNameInput').value.trim();
+        if (!routeName) {
+            showStatus('Please enter a route name', 'error');
+            return;
         }
+        
+        // ======== CRITICAL FIX: Check if currentRouteToSave exists ========
+        if (!currentRouteToSave) {
+            console.error('❌ currentRouteToSave is null! Cannot save route.');
+            showStatus('❌ Route data not found. Please create route and click Save button first.', 'error');
+            closeSaveRouteModal();
+            return;
+        }
+        
+        // Validate required fields
+        if (!currentRouteToSave.departure || !currentRouteToSave.arrival || !currentRouteToSave.coordinates) {
+            showStatus('❌ Route data is incomplete. Please recreate the route.', 'error');
+            closeSaveRouteModal();
+            return;
+        }
+        
+        // Determine save type (new or overwrite)
+        let saveType = 'new';
+        if (currentSaveAction === 'save') {
+            const selectedOption = document.querySelector('input[name="saveOption"]:checked');
+            saveType = selectedOption ? selectedOption.value : 'new';
+        }
+        
+        // Prepare data for API request
+        const routeData = {
+            name: routeName,
+            departure: currentRouteToSave.departure,
+            arrival: currentRouteToSave.arrival,
+            coordinates: currentRouteToSave.coordinates,
+            total_distance: parseFloat(currentRouteToSave.totalDistance.toFixed(2)),
+            flight_time: calculateFlightTime(currentRouteToSave.totalDistance),
+            version: document.getElementById('routeVersionInput')?.value.trim() || '',
+            description: `Saved via FlightFuel on ${new Date().toLocaleString()}`
+        };
+        
+        console.log('📤 Saving route:', { 
+            routeName: routeData.name,
+            departure: routeData.departure,
+            arrival: routeData.arrival,
+            coordinatesCount: routeData.coordinates.length,
+            saveType: saveType,
+            action: currentSaveAction 
+        });
+        
+        // Determine API endpoint based on save action
+        let apiUrl = '/api/save-route/';
+        if (currentSaveAction === 'saveAs') {
+            apiUrl = '/api/save-route-as/';
+        }
+        
+        // Send request to server
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(routeData)
+        });
+        
+        // Check response status
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('❌ Server response error:', errorText);
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Handle server response
+        if (data.status === 'success') {
+            // Update current route feature with new name BEFORE clearing
+            if (currentRouteToSave && currentRouteToSave.feature) {
+                currentRouteToSave.feature.set('name', routeName);
+                updateRouteInfo();
+            }
+            
+            // Show success message
+            const actionMsg = currentSaveAction === 'saveAs' ? 'saved as new copy' : 'saved';
+            showStatus(`✅ Route "${routeName}" ${actionMsg} successfully!`, 'success');
+            
+            // Close modal AFTER all operations
+            closeSaveRouteModal();
+            
+            // Clear saved data AFTER success
+            currentRouteToSave = null;
+            currentSaveAction = '';
+            
+        } else {
+            // Server returned error status
+            showStatus(`❌ Error: ${data.message}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Save process failed:', error);
+        showStatus(`❌ Save failed: ${error.message}`, 'error');
+    }
+}
 
         // ==================== SIMPLE EDIT TOGGLE ====================
         function toggleEditing() {
@@ -915,7 +948,6 @@ function saveCurrentRoute(isSaveAs = false) {
             stopEvent: false
         });
         map.addOverlay(wpTooltipOverlay);
-
         // ==================== MAP INTERACTIONS ====================
         let modifyInteraction = null;
         let snapInteraction = null;
@@ -1061,221 +1093,255 @@ function saveCurrentRoute(isSaveAs = false) {
         }
 
         // ==================== ROUTE SEARCH FUNCTIONS ====================
-        async function executeRouteSearch() {
-            try {
-                const originInput = document.getElementById('searchOrigin').value.trim().toUpperCase();
-                const destinationInput = document.getElementById('searchDestination').value.trim().toUpperCase();
-                
-                if (!originInput || !destinationInput) {
-                    showStatus('Please enter both origin and destination', 'error');
-                    return;
-                }
-                
-                if (originInput === destinationInput) {
-                    showStatus('Origin and destination cannot be the same', 'error');
-                    return;
-                }
-                
-                const originCode = await convertToIcaoIfNeeded(originInput);
-                const destinationCode = await convertToIcaoIfNeeded(destinationInput);
-                
-                console.log(`🔍 Route search: ${originInput} → ${originCode}, ${destinationInput} → ${destinationCode}`);
-                
-                const loadingSpinner = document.getElementById('searchLoadingSpinner');
-                const searchButton = document.getElementById('executeRouteSearch');
-                const resultsContainer = document.getElementById('searchResultsContent');
-                
-                if (!loadingSpinner || !searchButton || !resultsContainer) {
-                    console.error('❌ Required DOM elements for search not found!');
-                    showStatus('System error: UI components missing', 'error');
-                    return;
-                }
-                
-                loadingSpinner.classList.add('active');
-                searchButton.disabled = true;
-                resultsContainer.innerHTML = '';
-                
-                const response = await fetch(`/api/route-search/?origin=${originCode}&destination=${destinationCode}`);
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                loadingSpinner.classList.remove('active');
-                searchButton.disabled = false;
-                
-                if (data.status === 'error') {
-                    showStatus(data.message, 'error');
-                    
-                    resultsContainer.innerHTML = `
-                        <div class="no-results">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <h4>Search Error</h4>
-                            <p>${data.message}</p>
-                            ${data.suggestion ? `<p style="margin-top: 10px;">Suggestion: ${data.suggestion}</p>` : ''}
-                        </div>
-                    `;
-                    document.getElementById('resultsCount').textContent = '0';
-                } else {
-                    displayRouteSearchResults(data.routes || [], originInput, destinationInput, data);
-                    
-                    if (originInput !== originCode || destinationInput !== destinationCode) {
-                        showStatus(
-                            `IATA converted: ${originInput}→${originCode}, ${destinationInput}→${destinationCode}`,
-                            'info'
-                        );
-                    }
-                }
-                
-            } catch (error) {
-                const loadingSpinner = document.getElementById('searchLoadingSpinner');
-                const searchButton = document.getElementById('executeRouteSearch');
-                const resultsContainer = document.getElementById('searchResultsContent');
-                
-                if (loadingSpinner) loadingSpinner.classList.remove('active');
-                if (searchButton) searchButton.disabled = false;
-                
-                console.error('❌ Route search error:', error);
-                
-                if (resultsContainer) {
-                    resultsContainer.innerHTML = `
-                        <div class="no-results">
-                            <i class="fas fa-exclamation-triangle"></i>
-                            <h4>Search Error</h4>
-                            <p>Failed to search routes. Please try again.</p>
-                            <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
-                                Error: ${error.message}
-                            </p>
-                        </div>
-                    `;
-                }
-                
-                if (document.getElementById('resultsCount')) {
-                    document.getElementById('resultsCount').textContent = '0';
-                }
-                
-                showStatus('Error searching routes', 'error');
-            }
+async function executeRouteSearch() {
+    try {
+        const originInput = document.getElementById('searchOrigin').value.trim().toUpperCase();
+        const destinationInput = document.getElementById('searchDestination').value.trim().toUpperCase();
+        
+        console.log('🔍 Searching:', originInput, '→', destinationInput);
+        
+        if (!originInput || !destinationInput) {
+            showStatus('Please enter both origin and destination', 'error');
+            return;
         }
-
-        function displayRouteSearchResults(routes, originalOrigin, originalDestination, data = {}) {
-            const resultsContainer = document.getElementById('searchResultsContent');
-            const resultsCount = document.getElementById('resultsCount');
+        
+        if (originInput === destinationInput) {
+            showStatus('Origin and destination cannot be the same', 'error');
+            return;
+        }
+        
+        const loadingSpinner = document.getElementById('searchLoadingSpinner');
+        const searchButton = document.getElementById('executeRouteSearch');
+        const resultsContainer = document.getElementById('searchResultsContent');
+        const resultsCount = document.getElementById('resultsCount');
+        
+        if (!loadingSpinner || !searchButton || !resultsContainer) {
+            console.error('❌ UI elements not found!');
+            return;
+        }
+        
+        // Show loading
+        loadingSpinner.classList.add('active');
+        searchButton.disabled = true;
+        resultsContainer.innerHTML = '<div class="loading-text">Searching...</div>';
+        resultsCount.textContent = '0';
+        
+        // Call API
+        console.log('📞 Calling API...');
+        const response = await fetch(`/api/route-search/?origin=${originInput}&destination=${destinationInput}`);
+        
+        console.log('📥 API Response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('✅ API Response data:', data);
+        
+        // Hide loading
+        loadingSpinner.classList.remove('active');
+        searchButton.disabled = false;
+        
+        // Display results
+        if (data.status === 'error') {
+            showStatus(data.message, 'error');
+            resultsContainer.innerHTML = `
+                <div class="no-results">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h4>Search Error</h4>
+                    <p>${data.message}</p>
+                </div>
+            `;
+        } else {
+            // SUCCESS - Show results
+            console.log('🎯 Found routes:', data.count);
+            showStatus(`Found ${data.count} route(s)`, 'success');
+            resultsCount.textContent = data.count;
             
-            if (!resultsContainer || !resultsCount) return;
-            
-            if (!routes || routes.length === 0) {
-                let searchInfo = '';
-                if (data.search) {
-                    const { origin_icao, destination_icao } = data.search;
-                    if (origin_icao && origin_icao !== originalOrigin) {
-                        searchInfo += `<div><small>Origin converted: ${originalOrigin} → ${origin_icao}</small></div>`;
-                    }
-                    if (destination_icao && destination_icao !== originalDestination) {
-                        searchInfo += `<div><small>Destination converted: ${originalDestination} → ${destination_icao}</small></div>`;
-                    }
-                }
-                
+            if (data.count === 0) {
                 resultsContainer.innerHTML = `
                     <div class="no-results">
                         <i class="fas fa-search"></i>
                         <h4>No Routes Found</h4>
-                        <p>No saved routes found from ${originalOrigin} to ${originalDestination}.</p>
-                        ${searchInfo}
-                        <p style="margin-top: 10px; font-size: 14px;">
-                            Try creating a new route using the Route Builder.
-                        </p>
+                        <p>No saved routes found from ${originInput} to ${destinationInput}.</p>
                     </div>
                 `;
-                resultsCount.textContent = '0';
-                return;
-            }
-            
-            resultsCount.textContent = routes.length;
-            
-            let conversionInfo = '';
-            if (data.search) {
-                const { origin_icao, destination_icao } = data.search;
-                if (origin_icao && origin_icao !== originalOrigin) {
-                    conversionInfo += `<div style="background: #e8f0fe; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 13px;">
-                        <i class="fas fa-exchange-alt"></i> <strong>Origin converted:</strong> ${originalOrigin} (IATA) → ${origin_icao} (ICAO)
-                    </div>`;
-                }
-                if (destination_icao && destination_icao !== originalDestination) {
-                    conversionInfo += `<div style="background: #e8f0fe; padding: 8px; border-radius: 4px; margin-bottom: 10px; font-size: 13px;">
-                        <i class="fas fa-exchange-alt"></i> <strong>Destination converted:</strong> ${originalDestination} (IATA) → ${destination_icao} (ICAO)
-                    </div>`;
-                }
-            }
-            
-            let html = conversionInfo;
-            routes.forEach((route, index) => {
-                const routeName = route.name || `Route ${route.departure} to ${route.arrival}`;
-                const distance = route.total_distance ? `${route.total_distance.toFixed(1)} NM` : 'N/A';
-                const flightTime = route.flight_time || 'N/A';
-                const waypointCount = route.waypoints ? route.waypoints.length : 0;
-                const createdDate = route.created_at ? new Date(route.created_at).toLocaleDateString() : 'Unknown';
-                const createdBy = route.created_by || 'Unknown';
+            } else {
+                // Build HTML for results
+                let html = '';
+                data.routes.forEach((route, index) => {
+                    html += `
+                        <div class="route-result-item" data-route-id="${route.id}">
+                            <div class="route-result-header">
+                                <div class="route-title">
+                                    <i class="fas fa-route"></i>
+                                    ${route.name}
+                                </div>
+                                <div class="route-distance">${route.total_distance ? route.total_distance.toFixed(1) + ' NM' : 'N/A'}</div>
+                            </div>
+                            
+                            <div class="route-details-grid">
+                                <div class="route-detail-item">
+                                    <i class="fas fa-plane-departure"></i>
+                                    <strong>Origin:</strong>
+                                    <span class="route-icao">${route.departure}</span>
+                                </div>
+                                <div class="route-detail-item">
+                                    <i class="fas fa-plane-arrival"></i>
+                                    <strong>Destination:</strong>
+                                    <span class="route-icao">${route.arrival}</span>
+                                </div>
+                                <div class="route-detail-item">
+                                    <i class="fas fa-clock"></i>
+                                    <strong>Flight Time:</strong>
+                                    <span>${route.flight_time || 'N/A'}</span>
+                                </div>
+                                <div class="route-detail-item">
+                                    <i class="fas fa-calendar"></i>
+                                    <strong>Created:</strong>
+                                    <span>${route.created_at}</span>
+                                </div>
+                            </div>
+                            
+                            <div class="route-actions">
+                                <button class="load-route-btn" onclick="window.loadRouteFromSearch(${route.id})">
+                                    <i class="fas fa-map-marker-alt"></i> Load on Map
+                                </button>
+                                <button class="view-details-btn" onclick="window.viewRouteDetails(${route.id})">
+                                    <i class="fas fa-info-circle"></i> Details
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
                 
-                html += `
-                    <div class="route-result-item" data-route-id="${route.id}">
-                        <div class="route-result-header">
-                            <div class="route-title">
-                                <i class="fas fa-route"></i>
-                                ${routeName}
-                            </div>
-                            <div class="route-distance">${distance}</div>
-                        </div>
-                        
-                        <div class="route-details-grid">
-                            <div class="route-detail-item">
-                                <i class="fas fa-plane-departure"></i>
-                                <strong>Origin:</strong>
-                                <span class="route-icao">${route.departure}</span>
-                            </div>
-                            <div class="route-detail-item">
-                                <i class="fas fa-plane-arrival"></i>
-                                <strong>Destination:</strong>
-                                <span class="route-icao">${route.arrival}</span>
-                            </div>
-                            <div class="route-detail-item">
-                                <i class="fas fa-clock"></i>
-                                <strong>Flight Time:</strong>
-                                <span>${flightTime}</span>
-                            </div>
-                            <div class="route-detail-item">
-                                <i class="fas fa-map-marker-alt"></i>
-                                <strong>Waypoints:</strong>
-                                <span>${waypointCount}</span>
-                            </div>
-                            <div class="route-detail-item">
-                                <i class="fas fa-calendar"></i>
-                                <strong>Created:</strong>
-                                <span>${createdDate}</span>
-                            </div>
-                            <div class="route-detail-item">
-                                <i class="fas fa-user"></i>
-                                <strong>By:</strong>
-                                <span>${createdBy}</span>
-                            </div>
-                        </div>
-                        
-                        <div class="route-actions">
-                            <button class="load-route-btn" onclick="window.loadRouteFromSearch(${route.id})">
-                                <i class="fas fa-map-marker-alt"></i> Load on Map
-                            </button>
-                            <button class="view-details-btn" onclick="window.viewRouteDetails(${route.id})">
-                                <i class="fas fa-info-circle"></i> Details
-                            </button>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            resultsContainer.innerHTML = html;
+                resultsContainer.innerHTML = html;
+                console.log('✅ Results displayed');
+            }
         }
+        
+    } catch (error) {
+        console.error('❌ Route search error:', error);
+        
+        const loadingSpinner = document.getElementById('searchLoadingSpinner');
+        const searchButton = document.getElementById('executeRouteSearch');
+        const resultsContainer = document.getElementById('searchResultsContent');
+        
+        if (loadingSpinner) loadingSpinner.classList.remove('active');
+        if (searchButton) searchButton.disabled = false;
+        
+        if (resultsContainer) {
+            resultsContainer.innerHTML = `
+                <div class="no-results">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h4>Search Error</h4>
+                    <p>Failed to search routes. Please try again.</p>
+                    <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
+                        Error: ${error.message}
+                    </p>
+                </div>
+            `;
+        }
+        
+        showStatus('Error searching routes', 'error');
+    }
+}
+
+function displayRouteSearchResults(routes, originalOrigin, originalDestination, data = {}) {
+    console.log('🔄 Displaying search results...');
+    
+    const resultsContainer = document.getElementById('searchResultsContent');
+    const resultsCount = document.getElementById('resultsCount');
+    
+    if (!resultsContainer || !resultsCount) {
+        console.error('❌ Results container not found!');
+        return;
+    }
+    
+    console.log('🔍 Found routes:', routes.length);
+    
+    if (!routes || routes.length === 0) {
+        let searchInfo = '';
+        if (data.search) {
+            const { origin_icao, destination_icao } = data.search;
+            if (origin_icao && origin_icao !== originalOrigin) {
+                searchInfo += `<div class="conversion-info">Origin converted: ${originalOrigin} → ${origin_icao}</div>`;
+            }
+            if (destination_icao && destination_icao !== originalDestination) {
+                searchInfo += `<div class="conversion-info">Destination converted: ${originalDestination} → ${destination_icao}</div>`;
+            }
+        }
+        
+        resultsContainer.innerHTML = `
+            <div class="no-results">
+                <i class="fas fa-search"></i>
+                <h4>No Routes Found</h4>
+                <p>No saved routes found from ${originalOrigin} to ${originalDestination}.</p>
+                ${searchInfo}
+            </div>
+        `;
+        resultsCount.textContent = '0';
+        return;
+    }
+    
+    // اگر routes وجود دارد
+    resultsCount.textContent = routes.length;
+    
+    let html = '';
+    routes.forEach((route, index) => {
+        const routeName = route.name || `Route ${route.departure} to ${route.arrival}`;
+        const distance = route.total_distance ? `${route.total_distance.toFixed(1)} NM` : 'N/A';
+        const flightTime = route.flight_time || 'N/A';
+        const waypointCount = route.waypoints ? route.waypoints.length : 0;
+        const createdDate = route.created_at ? new Date(route.created_at).toLocaleDateString() : 'Unknown';
+        const createdBy = route.created_by || 'Unknown';
+        
+        html += `
+            <div class="route-result-item" data-route-id="${route.id}">
+                <div class="route-result-header">
+                    <div class="route-title">
+                        <i class="fas fa-route"></i>
+                        ${routeName}
+                    </div>
+                    <div class="route-distance">${distance}</div>
+                </div>
+                
+                <div class="route-details-grid">
+                    <div class="route-detail-item">
+                        <i class="fas fa-plane-departure"></i>
+                        <strong>Origin:</strong>
+                        <span class="route-icao">${route.departure}</span>
+                    </div>
+                    <div class="route-detail-item">
+                        <i class="fas fa-plane-arrival"></i>
+                        <strong>Destination:</strong>
+                        <span class="route-icao">${route.arrival}</span>
+                    </div>
+                    <div class="route-detail-item">
+                        <i class="fas fa-clock"></i>
+                        <strong>Flight Time:</strong>
+                        <span>${flightTime}</span>
+                    </div>
+                    <div class="route-detail-item">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <strong>Waypoints:</strong>
+                        <span>${waypointCount}</span>
+                    </div>
+                </div>
+                
+                <div class="route-actions">
+                    <button class="load-route-btn" onclick="window.loadRouteFromSearch(${route.id})">
+                        <i class="fas fa-map-marker-alt"></i> Load on Map
+                    </button>
+                </div>
+            </div>
+        `;
+    });
+    
+    console.log('✅ Setting results HTML');
+    resultsContainer.innerHTML = html;
+}
 
         function openRouteSearchModal() {
             const modal = document.getElementById('routeSearchModal');
@@ -2159,22 +2225,41 @@ function saveCurrentRoute(isSaveAs = false) {
             }
         });
 
-        // ==================== SAVE MODAL EVENT LISTENERS ====================
-        document.getElementById('closeSaveModal').addEventListener('click', closeSaveRouteModal);
-        document.getElementById('cancelSaveBtn').addEventListener('click', closeSaveRouteModal);
-        document.getElementById('confirmSaveBtn').addEventListener('click', executeSaveWithName);
+// ==================== SAVE MODAL EVENT LISTENERS ====================
+document.getElementById('closeSaveModal').addEventListener('click', closeSaveRouteModal);
+document.getElementById('cancelSaveBtn').addEventListener('click', closeSaveRouteModal);
 
-        document.getElementById('routeNameInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                executeSaveWithName();
-            }
-        });
+// Confirm button in save modal
+document.getElementById('confirmSaveBtn').addEventListener('click', function() {
+    console.log('🖱️ Confirm Save button clicked');
+    console.log('🔍 currentRouteToSave status:', currentRouteToSave ? 'Exists' : 'NULL');
+    
+    // Check if route data is prepared
+    if (!currentRouteToSave) {
+        showStatus('❌ Route data not prepared. Please create route and click Save button first.', 'error');
+        return;
+    }
+    
+    executeSaveWithName();
+});
 
-        document.getElementById('saveRouteModal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeSaveRouteModal();
-            }
-        });
+// Allow Enter key to save
+document.getElementById('routeNameInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        if (!currentRouteToSave) {
+            showStatus('❌ Route not ready for saving', 'error');
+            return;
+        }
+        executeSaveWithName();
+    }
+});
+
+// Close modal when clicking outside
+document.getElementById('saveRouteModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeSaveRouteModal();
+    }
+});
 
         // ==================== LAYER CONTROLS ====================
         function initLayerControls() {

@@ -832,7 +832,160 @@ body {
     border-radius: 3px;
 }
 
-/* ==================== ROUTE SEARCH MODAL ==================== */
+/* ==================== MODE STATUS ==================== */
+.mode-status {
+    display: inline-block;
+    background: #d4edda;
+    color: #155724;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    margin-left: 8px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.mode-status.edit {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* ==================== MODE HINT ==================== */
+.mode-hint {
+    background: #e8f0fe;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #1a73e8;
+    border: 1px solid #c3d9ff;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.mode-hint i {
+    margin-top: 2px;
+}
+
+/* ==================== EDIT TOOLS - SIMPLE STYLES ==================== */
+.edit-tools {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid #dee2e6;
+    margin-top: 20px;
+}
+
+.edit-status {
+    font-size: 12px;
+    color: #dc3545;
+    margin-left: 10px;
+    font-weight: normal;
+}
+
+.edit-status.active {
+    color: #28a745;
+}
+
+.btn-edit-main {
+    width: 100%;
+    padding: 15px;
+    background: #f8f9fa;
+    border: 2px dashed #6c757d;
+    border-radius: 10px;
+    color: #6c757d;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 15px;
+    transition: all 0.3s;
+}
+
+.btn-edit-main:hover {
+    background: #e9ecef;
+    border-color: #1a73e8;
+    color: #1a73e8;
+}
+
+.btn-edit-main i {
+    font-size: 24px;
+}
+
+.btn-edit-main.active {
+    background: #d4edda;
+    border: 2px solid #28a745;
+    color: #155724;
+}
+
+.btn-edit-main.active i {
+    color: #28a745;
+}
+
+.save-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.btn-save, .btn-save-as {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.btn-save {
+    background: #1a73e8;
+    color: white;
+}
+
+.btn-save:hover {
+    background: #0d47a1;
+}
+
+.btn-save-as {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-save-as:hover {
+    background: #545b62;
+}
+
+.edit-hint {
+    background: #e7f3ff;
+    border-radius: 8px;
+    padding: 10px 15px;
+    font-size: 13px;
+    color: #1a73e8;
+    border-left: 4px solid #1a73e8;
+}
+
+.edit-hint i {
+    margin-right: 8px;
+}
+
+.edit-hint.active {
+    background: #d4edda;
+    border-left-color: #28a745;
+    color: #155724;
+}
+
+/* ==================== MODALS ==================== */
+
+/* Route Search Modal */
 .route-search-modal {
     display: none;
     position: fixed;
@@ -1158,297 +1311,7 @@ body {
     background: var(--gray-medium);
 }
 
-.loading-spinner {
-    display: none;
-    text-align: center;
-    padding: 20px;
-}
-
-.loading-spinner.active {
-    display: block;
-}
-
-.spinner {
-    border: 3px solid var(--gray-light);
-    border-top: 3px solid var(--primary-blue);
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 15px;
-}
-
-/* ==================== ANIMATIONS ==================== */
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-30px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(8px) scale(0.98);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-@keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes fadeInSimple {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-/* ==================== STATUS MESSAGES ==================== */
-.status-message {
-    padding: 10px 14px;
-    border-radius: var(--border-radius-sm);
-    margin-top: 12px;
-    font-size: 14px;
-    animation: fadeInSimple 0.3s ease;
-}
-
-.status-info {
-    background: #fff3cd;
-    border: 1px solid #ffeaa7;
-    color: #856404;
-}
-
-.status-success {
-    background: #d4edda;
-    border: 1px solid #c3e6cb;
-    color: #155724;
-}
-
-.status-error {
-    background: #f8d7da;
-    border: 1px solid #f5c6cb;
-    color: #721c24;
-}
-
-/* ==================== CURSORS ==================== */
-.cursor-crosshair {
-    cursor: crosshair !important;
-}
-
-.cursor-grab {
-    cursor: grab !important;
-}
-
-.cursor-grabbing {
-    cursor: grabbing !important;
-}
-
-/* ==================== MEDIA QUERIES ==================== */
-@media (max-width: 1200px) {
-    .sidebar {
-        width: 280px;
-    }
-}
-
-@media (max-width: 768px) {
-    .app-container {
-        flex-direction: column;
-        height: auto;
-        min-height: 100vh;
-        margin-top: 50px;
-        overflow: visible !important;
-    }
-    
-    .sidebar {
-        width: 100%;
-        height: auto;
-        max-height: 40vh;
-        border-right: none;
-        border-bottom: 1px solid var(--gray-medium);
-        resize: none;
-        overflow-y: auto;
-        min-height: auto;
-    }
-    
-    .map-container {
-        height: 60vh;
-        min-height: 300px;
-        flex: none;
-    }
-    
-    .map-controls {
-        top: 10px;
-        right: 10px;
-    }
-    
-    .resize-handle {
-        display: none;
-    }
-    
-    .collapse-btn {
-        display: none;
-    }
-
-    .route-search-content {
-        width: 95%;
-        margin: 10px;
-        max-height: 90vh;
-    }
-    
-    .search-input-group {
-        flex-direction: row;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-    
-    .search-input {
-        width: calc(50% - 25px);
-        min-width: 100px;
-    }
-    
-    .search-swap-btn {
-        order: -1;
-        margin-bottom: 10px;
-        transform: rotate(90deg);
-    }
-    
-    .search-swap-btn:hover {
-        transform: rotate(270deg);
-    }
-    
-    .route-details-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .route-actions {
-        flex-direction: column;
-    }
-    
-    .layer-controls-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .mode-buttons {
-        flex-direction: column;
-    }
-}
-
-@media (max-width: 480px) {
-    .top-bar {
-        padding: 0 10px;
-        height: 50px;
-    }
-    
-    .logo {
-        font-size: 20px;
-        margin-right: 20px;
-    }
-    
-    .logo i {
-        font-size: 24px;
-    }
-    
-    .search-btn {
-        padding: 8px 15px;
-        font-size: 13px;
-    }
-    
-    .route-tooltip {
-        min-width: 180px;
-        max-width: 220px;
-        padding: 12px;
-        font-size: 12px;
-    }
-    
-    .search-input {
-        font-size: 14px;
-        padding: 12px 15px;
-    }
-    
-    .route-search-header h2 {
-        font-size: 18px;
-    }
-    
-    .sidebar {
-        padding: 15px;
-    }
-    
-    .section-title {
-        font-size: 15px;
-    }
-    
-    .btn {
-        padding: 8px 16px;
-        font-size: 13px;
-    }
-}
-/* ==================== MODE STATUS ==================== */
-.mode-status {
-    display: inline-block;
-    background: #d4edda;
-    color: #155724;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 12px;
-    margin-left: 8px;
-    font-weight: 600;
-    transition: all 0.3s;
-}
-
-.mode-status.edit {
-    background: #fff3cd;
-    color: #856404;
-}
-
-/* ==================== MODE HINT ==================== */
-.mode-hint {
-    background: #e8f0fe;
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin-top: 10px;
-    font-size: 13px;
-    color: #1a73e8;
-    border: 1px solid #c3d9ff;
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-}
-
-.mode-hint i {
-    margin-top: 2px;
-}
-
-/* ==================== SAVE ROUTE MODAL ==================== */
+/* Save Route Modal */
 .save-route-modal {
     display: none;
     position: fixed;
@@ -1593,25 +1456,6 @@ body {
     box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
 }
 
-/* ==================== MODE BUTTON SUBTITLE ==================== */
-.mode-btn-subtitle {
-    font-size: 11px;
-    opacity: 0.8;
-    margin-top: 3px;
-    font-weight: normal;
-}
-
-/* ==================== ANIMATIONS ==================== */
-@keyframes modalSlideIn {
-    from {
-        opacity: 0;
-        transform: translateY(-30px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
 /* ==================== SEARCH RESULTS POPUP ==================== */
 .search-results-popup {
     animation: fadeIn 0.3s ease;
@@ -1749,117 +1593,267 @@ body {
     background: #218838;
     transform: scale(1.1);
 }
-        /* ==================== EDIT TOOLS - SIMPLE STYLES ==================== */
-        .edit-tools {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid #dee2e6;
-            margin-top: 20px;
-        }
 
-        .edit-status {
-            font-size: 12px;
-            color: #dc3545;
-            margin-left: 10px;
-            font-weight: normal;
-        }
+/* ==================== LOADING SPINNER ==================== */
+.loading-spinner {
+    display: none;
+    text-align: center;
+    padding: 20px;
+}
 
-        .edit-status.active {
-            color: #28a745;
-        }
+.loading-spinner.active {
+    display: block;
+}
 
-        .btn-edit-main {
-            width: 100%;
-            padding: 15px;
-            background: #f8f9fa;
-            border: 2px dashed #6c757d;
-            border-radius: 10px;
-            color: #6c757d;
-            font-size: 16px;
-            cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 15px;
-            transition: all 0.3s;
-        }
+.spinner {
+    border: 3px solid var(--gray-light);
+    border-top: 3px solid var(--primary-blue);
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 15px;
+}
 
-        .btn-edit-main:hover {
-            background: #e9ecef;
-            border-color: #1a73e8;
-            color: #1a73e8;
-        }
+/* ==================== STATUS MESSAGES ==================== */
+.status-message {
+    padding: 10px 14px;
+    border-radius: var(--border-radius-sm);
+    margin-top: 12px;
+    font-size: 14px;
+    animation: fadeInSimple 0.3s ease;
+}
 
-        .btn-edit-main i {
-            font-size: 24px;
-        }
+.status-info {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+}
 
-        .btn-edit-main.active {
-            background: #d4edda;
-            border: 2px solid #28a745;
-            color: #155724;
-        }
+.status-success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
 
-        .btn-edit-main.active i {
-            color: #28a745;
-        }
+.status-error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
 
-        .save-buttons {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
+/* ==================== CURSORS ==================== */
+.cursor-crosshair {
+    cursor: crosshair !important;
+}
 
-        .btn-save, .btn-save-as {
-            flex: 1;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: all 0.2s;
-        }
+.cursor-grab {
+    cursor: grab !important;
+}
 
-        .btn-save {
-            background: #1a73e8;
-            color: white;
-        }
+.cursor-grabbing {
+    cursor: grabbing !important;
+}
 
-        .btn-save:hover {
-            background: #0d47a1;
-        }
+/* ==================== MODE BUTTON SUBTITLE ==================== */
+.mode-btn-subtitle {
+    font-size: 11px;
+    opacity: 0.8;
+    margin-top: 3px;
+    font-weight: normal;
+}
 
-        .btn-save-as {
-            background: #6c757d;
-            color: white;
-        }
+/* ==================== ANIMATIONS ==================== */
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
 
-        .btn-save-as:hover {
-            background: #545b62;
-        }
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
 
-        .edit-hint {
-            background: #e7f3ff;
-            border-radius: 8px;
-            padding: 10px 15px;
-            font-size: 13px;
-            color: #1a73e8;
-            border-left: 4px solid #1a73e8;
-        }
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
 
-        .edit-hint i {
-            margin-right: 8px;
-        }
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 
-        .edit-hint.active {
-            background: #d4edda;
-            border-left-color: #28a745;
-            color: #155724;
-        }
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeInSimple {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ==================== MEDIA QUERIES ==================== */
+@media (max-width: 1200px) {
+    .sidebar {
+        width: 280px;
+    }
+}
+
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        margin-top: 50px;
+        overflow: visible !important;
+    }
+    
+    .sidebar {
+        width: 100%;
+        height: auto;
+        max-height: 40vh;
+        border-right: none;
+        border-bottom: 1px solid var(--gray-medium);
+        resize: none;
+        overflow-y: auto;
+        min-height: auto;
+    }
+    
+    .map-container {
+        height: 60vh;
+        min-height: 300px;
+        flex: none;
+    }
+    
+    .map-controls {
+        top: 10px;
+        right: 10px;
+    }
+    
+    .resize-handle {
+        display: none;
+    }
+    
+    .collapse-btn {
+        display: none;
+    }
+
+    .route-search-content {
+        width: 95%;
+        margin: 10px;
+        max-height: 90vh;
+    }
+    
+    .search-input-group {
+        flex-direction: row;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    
+    .search-input {
+        width: calc(50% - 25px);
+        min-width: 100px;
+    }
+    
+    .search-swap-btn {
+        order: -1;
+        margin-bottom: 10px;
+        transform: rotate(90deg);
+    }
+    
+    .search-swap-btn:hover {
+        transform: rotate(270deg);
+    }
+    
+    .route-details-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .route-actions {
+        flex-direction: column;
+    }
+    
+    .layer-controls-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .mode-buttons {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .top-bar {
+        padding: 0 10px;
+        height: 50px;
+    }
+    
+    .logo {
+        font-size: 20px;
+        margin-right: 20px;
+    }
+    
+    .logo i {
+        font-size: 24px;
+    }
+    
+    .search-btn {
+        padding: 8px 15px;
+        font-size: 13px;
+    }
+    
+    .route-tooltip {
+        min-width: 180px;
+        max-width: 220px;
+        padding: 12px;
+        font-size: 12px;
+    }
+    
+    .search-input {
+        font-size: 14px;
+        padding: 12px 15px;
+    }
+    
+    .route-search-header h2 {
+        font-size: 18px;
+    }
+    
+    .sidebar {
+        padding: 15px;
+    }
+    
+    .section-title {
+        font-size: 15px;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+}

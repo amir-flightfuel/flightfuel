@@ -168,9 +168,13 @@ def parse_route_text(route_text):
         # Calculate distance
         total_distance = calculate_route_distance(coordinates)
         
+        # ======== FIX: تبدیل departure و arrival به ICAO ========
+        departure_icao = get_icao_code(departure)
+        arrival_icao = get_icao_code(arrival)
+        
         return {
-            'departure': departure,
-            'arrival': arrival,
+            'departure': departure_icao,  # استفاده از ICAO
+            'arrival': arrival_icao,      # استفاده از ICAO
             'waypoints': waypoints,
             'coordinates': coordinates,
             'total_distance': total_distance
@@ -791,15 +795,32 @@ class SaveRouteAPI(APIView):
                     'message': 'Minimum 2 points required to create a route'
                 }, status=400)
             
-            departure = data['departure']
-            arrival = data['arrival']
+            # ======== FIX 1: تبدیل به ICAO قبل از ذخیره ========
+            departure_icao = get_icao_code(data.get('departure', ''))
+            arrival_icao = get_icao_code(data.get('arrival', ''))
+            
+            if not departure_icao or not arrival_icao:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Invalid airport codes'
+                }, status=400)
+            
+            # ======== FIX: Get and validate route name ========
+            route_name = data.get('name', '').strip()
+            
+            # If name is empty, starts with "Route" or contains "Route", use simple format
+            if not route_name or 'Route' in route_name:
+                route_name = f"{departure_icao}-{arrival_icao}"  # استفاده از ICAO در نام
+                print(f"✅ Using simple route name: {route_name}")
+            # =================================================
             
             existing_route = Route.objects.filter(
-                departure=departure,
-                arrival=arrival
+                departure=departure_icao,
+                arrival=arrival_icao
             ).order_by('-created_at').first()
             
             if existing_route:
+                existing_route.name = route_name
                 existing_route.waypoints = data.get('waypoints', [])
                 existing_route.coordinates = LineString(line_coords, srid=4326)
                 existing_route.total_distance = data.get('total_distance', 0)
@@ -816,9 +837,9 @@ class SaveRouteAPI(APIView):
                 })
             else:
                 route = Route.objects.create(
-                    name=f"Route {departure} to {arrival}",
-                    departure=departure,
-                    arrival=arrival,
+                    name=route_name,
+                    departure=departure_icao,  # ذخیره با ICAO
+                    arrival=arrival_icao,      # ذخیره با ICAO
                     waypoints=data.get('waypoints', []),
                     coordinates=LineString(line_coords, srid=4326),
                     total_distance=data.get('total_distance', 0),
@@ -873,26 +894,40 @@ class SaveAsRouteAPI(APIView):
                     'message': 'Minimum 2 points required to create a route'
                 }, status=400)
             
-            departure = data['departure']
-            arrival = data['arrival']
+            # ======== FIX 1: تبدیل به ICAO قبل از ذخیره ========
+            departure_icao = get_icao_code(data.get('departure', ''))
+            arrival_icao = get_icao_code(data.get('arrival', ''))
+            
+            if not departure_icao or not arrival_icao:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Invalid airport codes'
+                }, status=400)
+            
+            # ======== FIX: Get and validate route name ========
+            custom_name = data.get('name', '').strip()
+            
+            # If custom name is empty, starts with "Route" or contains "Route", use simple format
+            if not custom_name or 'Route' in custom_name:
+                custom_name = f"{departure_icao}-{arrival_icao}"  # استفاده از ICAO
             
             version_count = Route.objects.filter(
-                departure=departure,
-                arrival=arrival
+                departure=departure_icao,
+                arrival=arrival_icao
             ).count()
             
             version = version_count + 1
             
-            custom_name = data.get('name', '')
+            # Create route name with version
             if custom_name:
                 route_name = f"{custom_name} v{version}"
             else:
-                route_name = f"Route {departure} to {arrival} v{version}"
+                route_name = f"{departure_icao}-{arrival_icao} v{version}"
             
             route = Route.objects.create(
                 name=route_name,
-                departure=departure,
-                arrival=arrival,
+                departure=departure_icao,  # ذخیره با ICAO
+                arrival=arrival_icao,      # ذخیره با ICAO
                 waypoints=data.get('waypoints', []),
                 coordinates=LineString(line_coords, srid=4326),
                 total_distance=data.get('total_distance', 0),
@@ -1072,8 +1107,11 @@ class ImportRouteAPI(APIView):
                     'message': 'Could not parse route'
                 }, status=400)
             
+            # Use simple name format for imported routes
+            route_name = f"{parsed_route['departure']}-{parsed_route['arrival']}"
+            
             route = Route.objects.create(
-                name=f"Imported: {parsed_route['departure']} to {parsed_route['arrival']}",
+                name=route_name,
                 departure=parsed_route['departure'],
                 arrival=parsed_route['arrival'],
                 waypoints=parsed_route['waypoints'],
@@ -1099,20 +1137,21 @@ class ImportRouteAPI(APIView):
                 'message': str(e)
             }, status=400)
 
-# ==================== ROUTE SEARCH API ====================
+# ==================== ROUTE SEARCH API - IMPROVED VERSION ====================
 class RouteSearchAPI(APIView):
     """
-    New API for searching routes - full IATA/ICAO support
+    IMPROVED API for searching routes - supports BOTH IATA and ICAO codes + Case-Insensitive
     """
     
     permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get(self, request):
         try:
+            # دریافت ورودی و تبدیل به uppercase (برای consistency)
             origin = request.GET.get('origin', '').strip().upper()
             destination = request.GET.get('destination', '').strip().upper()
             
-            print(f"🔍 RouteSearchAPI: {origin} → {destination}")
+            print(f"🔍 RouteSearchAPI: Searching {origin} → {destination}")
             
             if not origin or not destination:
                 return JsonResponse({
@@ -1120,40 +1159,49 @@ class RouteSearchAPI(APIView):
                     'message': 'Both origin and destination airport codes are required'
                 }, status=400)
             
-            # Find airport information
-            origin_airport = Airport.objects.filter(
-                Q(iata_code=origin) | Q(icao_code=origin)
-            ).first()
-            
-            destination_airport = Airport.objects.filter(
-                Q(iata_code=destination) | Q(icao_code=destination)
-            ).first()
-            
-            origin_icao = origin_airport.icao_code if origin_airport else origin
-            destination_icao = destination_airport.icao_code if destination_airport else destination
+            # تبدیل به ICAO
+            origin_icao = get_icao_code(origin)
+            destination_icao = get_icao_code(destination)
             
             print(f"🔍 Code conversion: {origin}→{origin_icao}, {destination}→{destination_icao}")
             
-            # Create all possible search combinations
-            search_combinations = [
-                (origin, destination),                    # Original
-                (origin_icao, destination_icao),          # Converted ICAO
-                (origin_icao, destination),               # Combination 1
-                (origin, destination_icao),               # Combination 2
-                (destination, origin),                    # Reverse original
-                (destination_icao, origin_icao),          # Reverse ICAO
-            ]
-            
-            # Remove duplicates
-            search_combinations = list(set(search_combinations))
-            
-            print(f"🔍 Search combinations: {search_combinations}")
-            
-            # Search in all combinations
+            # ======== FIX 2: جستجوی ترکیبی + Case-Insensitive ========
             all_routes = []
             seen_ids = set()
             
-            for dep, arr in search_combinations:
+            # لیست همه ترکیبات ممکن برای جستجو
+            search_pairs = []
+            
+            # ترکیب 1: ICAO vs ICAO (اصلی)
+            if origin_icao and destination_icao:
+                search_pairs.append((origin_icao, destination_icao))
+            
+            # ترکیب 2: IATA vs IATA (اگر کاربر IATA وارد کرده)
+            if len(origin) == 3 and len(destination) == 3:
+                search_pairs.append((origin, destination))
+            
+            # ترکیب 3: ICAO vs IATA (ترکیبی)
+            if origin_icao and len(destination) == 3:
+                search_pairs.append((origin_icao, destination))
+            if len(origin) == 3 and destination_icao:
+                search_pairs.append((origin, destination_icao))
+            
+            # ترکیب 4: IATA vs ICAO (برعکس)
+            if len(origin) == 4 and destination_icao:
+                search_pairs.append((origin, destination_icao))
+            if origin_icao and len(destination) == 4:
+                search_pairs.append((origin_icao, destination))
+            
+            # حذف duplicate ها
+            search_pairs = list(set(search_pairs))
+            
+            print(f"🔍 Search pairs to try: {search_pairs}")
+            
+            # جستجو در همه ترکیبات
+            for dep, arr in search_pairs:
+                print(f"  🔍 Searching: {dep} → {arr}")
+                
+                # استفاده از __iexact برای case-insensitive search
                 routes = Route.objects.filter(
                     departure__iexact=dep,
                     arrival__iexact=arr
@@ -1163,8 +1211,25 @@ class RouteSearchAPI(APIView):
                     if route.id not in seen_ids:
                         seen_ids.add(route.id)
                         all_routes.append(route)
+                        print(f"    ✅ Found: {route.departure}→{route.arrival} ({route.name})")
             
-            print(f"✅ Found: {len(all_routes)} routes")
+            # جستجوی دوطرفه (برعکس)
+            reverse_search_pairs = [(arr, dep) for dep, arr in search_pairs if dep != arr]
+            for dep, arr in reverse_search_pairs:
+                print(f"  🔍 Reverse searching: {dep} → {arr}")
+                
+                routes = Route.objects.filter(
+                    departure__iexact=dep,
+                    arrival__iexact=arr
+                )
+                
+                for route in routes:
+                    if route.id not in seen_ids:
+                        seen_ids.add(route.id)
+                        all_routes.append(route)
+                        print(f"    ✅ Found (reverse): {route.departure}→{route.arrival} ({route.name})")
+            
+            print(f"✅ Total unique routes found: {len(all_routes)}")
             
             # Prepare results
             routes_list = []
@@ -1195,6 +1260,14 @@ class RouteSearchAPI(APIView):
                 routes_list.append(route_data)
             
             # Airport information for display
+            origin_airport = Airport.objects.filter(
+                Q(iata_code=origin) | Q(icao_code=origin) | Q(icao_code=origin_icao)
+            ).first()
+            
+            destination_airport = Airport.objects.filter(
+                Q(iata_code=destination) | Q(icao_code=destination) | Q(icao_code=destination_icao)
+            ).first()
+            
             origin_info = {
                 'code': origin,
                 'icao': origin_icao,
