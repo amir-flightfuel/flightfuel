@@ -5,8 +5,11 @@ from django.contrib.gis.geos import LineString
 from django.db.models import Q
 
 class Waypoint(models.Model):
+    """
+    Navigation waypoint model (VOR, NDB, FIX, Airport, etc.)
+    """
     TYPES = [
-        ('AIRPORT', 'فرودگاه'),
+        ('AIRPORT', 'Airport'),
         ('VOR', 'VOR/DME'),
         ('NDB', 'NDB'),
         ('FIX', 'Fix'),
@@ -19,50 +22,38 @@ class Waypoint(models.Model):
         ('VORTAC', 'VORTAC'),
     ]
     
-    identifier = models.CharField(max_length=10, unique=True, verbose_name='شناسه')
-    name = models.CharField(max_length=100, verbose_name='نام')
+    identifier = models.CharField(max_length=10, unique=True, verbose_name='Identifier')
+    name = models.CharField(max_length=100, verbose_name='Name')
     type = models.CharField(
         max_length=10, 
         choices=TYPES, 
         default='FIX',
-        verbose_name='نوع'
+        verbose_name='Type'
     )
     
-    frequency = models.FloatField(
-        null=True, 
-        blank=True, 
-        verbose_name='فرکانس (MHz)'
-    )
-    elevation = models.IntegerField(
-        null=True, 
-        blank=True, 
-        verbose_name='ارتفاع (فوت)'
-    )
-    magnetic_variation = models.FloatField(
-        null=True, 
-        blank=True, 
-        verbose_name='انحراف مغناطیسی (°)'
-    )
+    frequency = models.FloatField(null=True, blank=True, verbose_name='Frequency (MHz)')
+    elevation = models.IntegerField(null=True, blank=True, verbose_name='Elevation (ft)')
+    magnetic_variation = models.FloatField(null=True, blank=True, verbose_name='Magnetic Variation (°)')
     
-    location = models.PointField(srid=4326, verbose_name='موقعیت')
-    country = models.CharField(max_length=100, verbose_name='کشور')
+    location = models.PointField(srid=4326, verbose_name='Location')
+    country = models.CharField(max_length=100, verbose_name='Country')
     
     source = models.CharField(
         max_length=50, 
         default='OURAIRPORTS',
         choices=[
             ('OURAIRPORTS', 'OurAirports'),
-            ('AIP_IRAN', 'AIP ایران'),
-            ('MANUAL', 'دستی'),
+            ('AIP', 'AIP'),
+            ('MANUAL', 'Manual'),
         ],
-        verbose_name='منبع'
+        verbose_name='Source'
     )
-    is_active = models.BooleanField(default=True, verbose_name='فعال')
+    is_active = models.BooleanField(default=True, verbose_name='Active')
     
     class Meta:
         db_table = 'waypoints'
-        verbose_name = 'نقطه ناوبری'
-        verbose_name_plural = 'نقاط ناوبری'
+        verbose_name = 'Waypoint'
+        verbose_name_plural = 'Waypoints'
         ordering = ['identifier']
         indexes = [
             models.Index(fields=['type']),
@@ -72,8 +63,25 @@ class Waypoint(models.Model):
     
     def __str__(self):
         return f"{self.identifier} ({self.name})"
+    
+    def get_type_display(self):
+        """Get human-readable type name"""
+        for code, name in self.TYPES:
+            if code == self.type:
+                return name
+        return self.type
+    
+    def get_source_display(self):
+        """Get human-readable source name"""
+        for code, name in self._meta.get_field('source').choices:
+            if code == self.source:
+                return name
+        return self.source
 
 class Airway(models.Model):
+    """
+    Published airway model (A, B, G, R routes)
+    """
     TYPES = [
         ('A', 'Alpha - North/South'),
         ('B', 'Bravo - North/South'),
@@ -83,11 +91,7 @@ class Airway(models.Model):
     
     identifier = models.CharField(max_length=10, verbose_name='Airway ID')
     name = models.CharField(max_length=100, verbose_name='Airway Name')
-    type = models.CharField(
-        max_length=1, 
-        choices=TYPES,
-        verbose_name='Airway Type'
-    )
+    type = models.CharField(max_length=1, choices=TYPES, verbose_name='Airway Type')
     
     class Meta:
         db_table = 'airways'
@@ -97,8 +101,18 @@ class Airway(models.Model):
     
     def __str__(self):
         return f"{self.identifier} - {self.name}"
+    
+    def get_type_display(self):
+        """Get human-readable airway type"""
+        for code, name in self.TYPES:
+            if code == self.type:
+                return name
+        return self.type
 
 class AirwaySegment(models.Model):
+    """
+    Segment of an airway connecting two waypoints
+    """
     airway = models.ForeignKey(Airway, on_delete=models.CASCADE, related_name='segments')
     from_waypoint = models.ForeignKey(Waypoint, related_name='segment_starts', on_delete=models.CASCADE)
     to_waypoint = models.ForeignKey(Waypoint, related_name='segment_ends', on_delete=models.CASCADE)
@@ -115,20 +129,17 @@ class AirwaySegment(models.Model):
         return f"{self.airway.identifier}: {self.from_waypoint}→{self.to_waypoint}"
 
 class Route(models.Model):
+    """
+    Flight route model with support for soft delete
+    """
     name = models.CharField(max_length=100, verbose_name='Route Name')
     departure = models.CharField(max_length=4, verbose_name='Departure (ICAO)', db_index=True)
     arrival = models.CharField(max_length=4, verbose_name='Arrival (ICAO)', db_index=True)
     waypoints = models.JSONField(verbose_name='Waypoints', default=list)
     coordinates = models.LineStringField(srid=4326, verbose_name='Coordinates', null=True, blank=True)
     total_distance = models.FloatField(default=0, verbose_name='Total Distance (NM)')
-    flight_time = models.CharField(
-        max_length=20, 
-        verbose_name='Flight Time (HH:MM)',
-        blank=True, 
-        null=True
-    )
+    flight_time = models.CharField(max_length=20, verbose_name='Flight Time (HH:MM)', blank=True, null=True)
     
-    # New field: User-defined version/code (can be word or number)
     version = models.CharField(
         max_length=50,
         verbose_name='Version/Code',
@@ -139,6 +150,11 @@ class Route(models.Model):
     
     description = models.TextField(blank=True, verbose_name='Description')
     
+    # Soft delete support
+    is_active = models.BooleanField(default=True, verbose_name='Active', db_index=True,
+                                    help_text='Soft delete flag. False means route is deleted.')
+    
+    # User tracking
     created_by = models.ForeignKey(
         User, 
         on_delete=models.CASCADE, 
@@ -154,6 +170,7 @@ class Route(models.Model):
         related_name='updated_routes'
     )
     
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Created At')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='Updated At')
     
@@ -166,14 +183,16 @@ class Route(models.Model):
             models.Index(fields=['arrival']),
             models.Index(fields=['created_at']),
             models.Index(fields=['name']),
-            models.Index(fields=['version']),  # New index for version field
+            models.Index(fields=['version']),
+            models.Index(fields=['is_active']),  # Added for soft delete filtering
         ]
         ordering = ['-created_at']
-        # Unique constraint: Same departure+arrival+version cannot be duplicated
         constraints = [
+            # Ensure unique combination only for active routes
             models.UniqueConstraint(
-                fields=['departure', 'arrival', 'version'],
-                name='unique_departure_arrival_version'
+                fields=['departure', 'arrival', 'name', 'version'],
+                name='unique_route_combination',
+                condition=models.Q(is_active=True)  # Only enforce for active routes
             )
         ]
     
@@ -183,27 +202,26 @@ class Route(models.Model):
         return f"{self.name} ({self.departure}→{self.arrival})"
     
     def get_full_name(self):
-        """Get complete route name including version if exists"""
+        """Get complete route name with version"""
         if self.version:
             return f"{self.name} - {self.version}"
         return self.name
     
     def get_search_name(self):
-        """Get name for search purposes: DEPARTURE-ARRIVAL"""
+        """Get simplified name for search"""
         return f"{self.departure}-{self.arrival}"
     
     def get_waypoint_objects(self):
-        """Get Waypoint objects from identifiers"""
+        """Get Waypoint objects for the route's waypoints"""
         return Waypoint.objects.filter(identifier__in=self.waypoints).order_by('identifier')
     
     def calculate_coordinates(self):
-        """Calculate LineString from waypoints"""
+        """Calculate LineString coordinates from waypoints"""
         if len(self.waypoints) < 2:
             return None
         
         waypoint_objects = Waypoint.objects.filter(identifier__in=self.waypoints)
         
-        # Sort based on order in waypoints list
         ordered_points = []
         for wp_id in self.waypoints:
             wp = waypoint_objects.filter(identifier=wp_id).first()
@@ -215,7 +233,7 @@ class Route(models.Model):
         return None
     
     def calculate_distance(self):
-        """Calculate total distance in nautical miles"""
+        """Calculate total route distance in nautical miles"""
         if len(self.waypoints) < 2:
             return 0
         
@@ -226,43 +244,43 @@ class Route(models.Model):
             
             if wp1 and wp2:
                 distance_deg = wp1.location.distance(wp2.location)
-                distance_nm = distance_deg * 60.11  # Convert to nautical miles
+                distance_nm = distance_deg * 60.11
                 total_nm += distance_nm
         
         return round(total_nm, 2)
     
     def calculate_flight_time(self):
-        """Calculate flight time based on distance"""
+        """Calculate estimated flight time based on distance"""
         if self.total_distance <= 0:
             return ""
         
-        # Average speed: 450 knots
-        hours = self.total_distance / 450
+        hours = self.total_distance / 450  # Assuming 450 knots average speed
         hour_int = int(hours)
         minute_int = int((hours - hour_int) * 60)
         
         return f"{hour_int:02d}:{minute_int:02d}"
     
     def save(self, *args, **kwargs):
-        # 1. Auto name: DEPARTURE-ARRIVAL (simple format for search)
+        """Override save to auto-calculate fields"""
+        # Set default name if not provided
         if not self.name:
             self.name = f"{self.departure}-{self.arrival}"
         
-        # 2. Auto coordinates
+        # Calculate coordinates from waypoints
         if self.waypoints and len(self.waypoints) >= 2:
             coords = self.calculate_coordinates()
             if coords:
                 self.coordinates = coords
         
-        # 3. Auto distance
+        # Calculate total distance
         if self.waypoints and len(self.waypoints) >= 2:
             self.total_distance = self.calculate_distance()
         
-        # 4. Auto flight time
+        # Calculate flight time if not provided
         if self.total_distance > 0 and not self.flight_time:
             self.flight_time = self.calculate_flight_time()
         
-        # 5. Add departure and arrival to waypoints if not present
+        # Ensure departure and arrival are in waypoints
         if self.waypoints:
             if self.departure not in self.waypoints:
                 self.waypoints.insert(0, self.departure)
@@ -272,23 +290,51 @@ class Route(models.Model):
         super().save(*args, **kwargs)
     
     def get_waypoint_count(self):
+        """Get number of waypoints in route"""
         return len(self.waypoints) if self.waypoints else 0
     
     def get_formatted_waypoints(self):
+        """Get formatted string of waypoints"""
         return " → ".join(self.waypoints) if self.waypoints else "No waypoints"
+    
+    def soft_delete(self):
+        """Mark route as deleted (soft delete)"""
+        self.is_active = False
+        self.save(update_fields=['is_active', 'updated_at'])
+    
+    def restore(self):
+        """Restore soft-deleted route"""
+        self.is_active = True
+        self.save(update_fields=['is_active', 'updated_at'])
+    
+    def hard_delete(self):
+        """Permanently delete route"""
+        super().delete()
+    
+    @classmethod
+    def get_active_routes(cls):
+        """Get only active routes"""
+        return cls.objects.filter(is_active=True)
+    
+    @classmethod
+    def get_deleted_routes(cls):
+        """Get only soft-deleted routes"""
+        return cls.objects.filter(is_active=False)
     
     @classmethod
     def get_available_versions(cls, departure, arrival):
-        """Get all existing versions for a departure-arrival pair"""
+        """Get all versions for a route pair"""
         return cls.objects.filter(
             departure=departure,
-            arrival=arrival
+            arrival=arrival,
+            is_active=True
         ).exclude(version='').values_list('version', flat=True).distinct()
 
 class FlightInformationRegion(models.Model):
-    """Flight Information Region (FIR) - Airspace boundaries"""
-    
-    identifier = models.CharField(max_length=10, unique=True, verbose_name='FIR Identifier (e.g., OIIX)')
+    """
+    Flight Information Region (FIR) model
+    """
+    identifier = models.CharField(max_length=10, unique=True, verbose_name='FIR Identifier')
     name = models.CharField(max_length=200, verbose_name='Full FIR Name')
     country = models.CharField(max_length=100, verbose_name='Country')
     country_code = models.CharField(max_length=5, verbose_name='ISO Country Code', blank=True)
@@ -333,13 +379,22 @@ class FlightInformationRegion(models.Model):
         return f"{self.identifier} - {self.name}"
     
     def get_center_point(self):
+        """Get center point of FIR boundary"""
         if self.boundary:
             return self.boundary.centroid
         return None
     
     def get_area_km2(self):
+        """Calculate area in square kilometers"""
         if self.boundary:
             area_sq_deg = self.boundary.area
-            area_km2 = area_sq_deg * 111 * 111
+            area_km2 = area_sq_deg * 111 * 111  # Approximate conversion
             return round(area_km2, 2)
         return 0
+    
+    def get_icao_region_display(self):
+        """Get human-readable ICAO region"""
+        for code, name in self._meta.get_field('icao_region').choices:
+            if code == self.icao_region:
+                return name
+        return self.icao_region

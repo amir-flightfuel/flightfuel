@@ -9,6 +9,7 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{% static 'css/base.css' %}">
+    
 </head>
 <body>
     <!-- TOP BAR -->
@@ -144,7 +145,7 @@
                     </div>
                 </div>
 
-                <!-- Edit Tools - SIMPLE VERSION -->
+                <!-- Edit Tools - WITH DELETE BUTTON -->
                 <div class="sidebar-section">
                     <div id="editTools" class="edit-tools">
                         <h3 class="section-title">
@@ -159,13 +160,16 @@
                             <small>Click to start modifying route</small>
                         </button>
                         
-                        <!-- دکمه‌های Save -->
+                        <!-- دکمه‌های Save & Delete -->
                         <div class="save-buttons">
                             <button class="btn-save" id="btnSave">
                                 <i class="fas fa-save"></i> Save
                             </button>
                             <button class="btn-save-as" id="btnSaveAs">
                                 <i class="fas fa-copy"></i> Save As
+                            </button>
+                            <button class="btn-delete" id="btnDeleteRoute">
+                                <i class="fas fa-trash-alt"></i> Delete
                             </button>
                         </div>
                         
@@ -344,6 +348,79 @@
         </div>
     </div>
 
+    <!-- CONFLICT RESOLUTION POPUP -->
+    <div class="conflict-popup-overlay" id="conflictPopup">
+        <div class="conflict-popup">
+            <div class="conflict-popup-header">
+                <h3><i class="fas fa-exclamation-triangle"></i> Route Conflict Detected</h3>
+                <button class="close-popup" id="closeConflictPopup">&times;</button>
+            </div>
+            <div class="conflict-popup-body">
+                <div class="conflict-warning">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>A route with the same name already exists. Please choose how to proceed:</p>
+                </div>
+                
+                <div class="existing-route-info">
+                    <h4><i class="fas fa-route"></i> Existing Route</h4>
+                    <div class="route-detail-grid" id="existingRouteDetails">
+                        <!-- Will be filled by JavaScript -->
+                    </div>
+                </div>
+                
+                <div class="conflict-options">
+                    <div class="conflict-option option-overwrite selected" data-action="overwrite">
+                        <input type="radio" name="conflictOption" value="overwrite" class="option-radio" checked>
+                        <div class="option-icon">
+                            <i class="fas fa-sync-alt"></i>
+                        </div>
+                        <div class="option-content">
+                            <div class="option-title">Overwrite Existing Route</div>
+                            <div class="option-description">
+                                Replace the existing route with your new version. The old route will be permanently overwritten.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="conflict-option option-save-as" data-action="save_as">
+                        <input type="radio" name="conflictOption" value="save_as" class="option-radio">
+                        <div class="option-icon">
+                            <i class="fas fa-copy"></i>
+                        </div>
+                        <div class="option-content">
+                            <div class="option-title">Save as New Version</div>
+                            <div class="option-description">
+                                Create a new route with a version number. Both routes will be preserved.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="conflict-option option-cancel" data-action="cancel">
+                        <input type="radio" name="conflictOption" value="cancel" class="option-radio">
+                        <div class="option-icon">
+                            <i class="fas fa-times"></i>
+                        </div>
+                        <div class="option-content">
+                            <div class="option-title">Cancel Save Operation</div>
+                            <div class="option-description">
+                                Cancel saving this route. No changes will be made to existing routes.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="conflict-actions">
+                    <button class="conflict-btn conflict-btn-cancel" id="conflictCancelBtn">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button class="conflict-btn conflict-btn-confirm" id="conflictConfirmBtn">
+                        <i class="fas fa-check"></i> Confirm Action
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- SCRIPTS -->
     <script src="https://cdn.jsdelivr.net/npm/ol@8.2.0/dist/ol.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -374,157 +451,656 @@
 
         // ==================== SAVE ROUTE SYSTEM ====================
         let currentRouteToSave = null;
-        let currentSaveAction = ''; // 'save' or 'saveAs'
+        let currentSaveAction = '';
+        let conflictDataSimple = null;
+        let isEditingExistingRoute = false;
+        let existingRouteId = null;
+        let existingRouteName = '';
 
-        function showSaveRouteModal(isSaveAs = false) {
+        // ==================== UTILITY FUNCTIONS ====================
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function calculateDistance(coord1, coord2) {
+            const [lon1, lat1] = coord1;
+            const [lon2, lat2] = coord2;
+            
+            const R = 3440.065;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function calculateFlightTime(distanceNm) {
+            const hours = distanceNm / 450;
+            const hourInt = Math.floor(hours);
+            const minuteInt = Math.round((hours - hourInt) * 60);
+            
+            return `${hourInt.toString().padStart(2, '0')}:${minuteInt.toString().padStart(2, '0')}`;
+        }
+
+        function showStatus(message, type) {
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status-message status-${type}`;
+            statusDiv.innerHTML = message;
+            statusDiv.style.position = 'fixed';
+            statusDiv.style.bottom = '20px';
+            statusDiv.style.right = '20px';
+            statusDiv.style.zIndex = '10000';
+            statusDiv.style.maxWidth = '300px';
+            document.body.appendChild(statusDiv);
+            
+            setTimeout(() => {
+                statusDiv.remove();
+            }, 3000);
+        }
+
+        // ==================== DELETE ROUTE FUNCTIONALITY ====================
+function updateDeleteButtonVisibility() {
+    const btnDelete = document.getElementById('btnDeleteRoute');
+    
+    // فقط اگر در Edit Mode هستیم بررسی کن
+    if (currentMode !== 'edit') {
+        btnDelete.style.display = 'none';
+        btnDelete.disabled = true;
+        return;
+    }
+    
+    const routeFeatures = routeLayer.getSource().getFeatures();
+    
+    if (routeFeatures.length > 0) {
+        const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+        const props = latestRouteFeature.getProperties();
+        
+        console.log('🔍 Route properties:', props);  // برای debug
+        
+        // Method 1: Check if route has route_id property
+        let hasSavedRouteId = props.route_id !== undefined;
+        
+        // Method 2: Check if route has id property (for backward compatibility)
+        if (!hasSavedRouteId && props.id !== undefined) {
+            hasSavedRouteId = true;
+            // Set route_id from id if missing
+            if (!props.route_id && props.id) {
+                latestRouteFeature.set('route_id', props.id);
+            }
+        }
+        
+        // Method 3: Check global existingRouteId (loaded from search)
+        if (!hasSavedRouteId && existingRouteId) {
+            hasSavedRouteId = true;
+            latestRouteFeature.set('route_id', existingRouteId);
+        }
+        
+        btnDelete.style.display = hasSavedRouteId ? 'flex' : 'none';
+        btnDelete.disabled = !hasSavedRouteId;
+        
+        if (hasSavedRouteId) {
+            // Use route_id from feature or global variable
+            existingRouteId = props.route_id || props.id || existingRouteId;
+            existingRouteName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
+            
+            console.log('✅ Delete button enabled for route:', {
+                route_id: existingRouteId,
+                name: existingRouteName
+            });
+        }
+    } else {
+        btnDelete.style.display = 'none';
+        btnDelete.disabled = true;
+    }
+}
+
+async function deleteCurrentRoute() {
+    // Use existingRouteId from global variable (set when loading route)
+    if (!existingRouteId) {
+        // Fallback: try to get route_id from the feature
+        const routeFeatures = routeLayer.getSource().getFeatures();
+        if (routeFeatures.length > 0) {
+            const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+            const props = latestRouteFeature.getProperties();
+            existingRouteId = props.route_id || props.id;
+            existingRouteName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
+        }
+        
+        if (!existingRouteId) {
+            showStatus('❌ Please load or create a route first', 'error');
+            return;
+        }
+    }
+    
+    const confirmed = confirm(`Delete route: "${existingRouteName || 'Unnamed Route'}"?`);
+    if (!confirmed) return;
+    
+    try {
+        const btnDelete = document.getElementById('btnDeleteRoute');
+        const originalHtml = btnDelete.innerHTML;
+        btnDelete.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+        btnDelete.disabled = true;
+        
+        console.log('🗑️ Deleting route ID:', existingRouteId);
+        
+        // Use simple DELETE without confirm parameter
+        const response = await fetch(`/api/delete-route/${existingRouteId}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const data = await response.json();
+        console.log('🗑️ Delete response:', data);
+        
+        btnDelete.innerHTML = originalHtml;
+        btnDelete.disabled = false;
+        
+        if (data.status === 'success') {
+            showStatus(`✅ ${data.message}`, 'success');
+            
+            // Clear route from map
+            routeLayer.getSource().clear();
+            routeLayer.setVisible(false);
+            document.getElementById('toggleRoute').checked = false;
+            document.getElementById('routeInfo').classList.remove('active');
+            
+            // Reset all variables
+            currentRouteToSave = null;
+            existingRouteId = null;
+            existingRouteName = '';
+            
+            // Update delete button
+            updateDeleteButtonVisibility();
+            
+        } else {
+            showStatus(`❌ ${data.message}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('❌ Delete error:', error);
+        
+        const btnDelete = document.getElementById('btnDeleteRoute');
+        btnDelete.innerHTML = '<i class="fas fa-trash-alt"></i> Delete';
+        btnDelete.disabled = false;
+        
+        showStatus(`❌ Delete failed: ${error.message}`, 'error');
+    }
+}
+        // ==================== ROUTE CHANGE MONITOR ====================
+        function setupRouteChangeMonitor() {
+            // وقتی مسیر اضافه یا حذف می‌شود
+            routeLayer.getSource().on('addfeature', function() {
+                setTimeout(updateDeleteButtonVisibility, 100);
+            });
+            
+            routeLayer.getSource().on('removefeature', function() {
+                setTimeout(updateDeleteButtonVisibility, 100);
+            });
+            
+            // وقتی ویژگی‌های مسیر تغییر می‌کنند (مثلاً پس از ذخیره)
+            routeLayer.getSource().on('changefeature', function() {
+                setTimeout(updateDeleteButtonVisibility, 100);
+            });
+        }
+
+        // ==================== SAVE MODAL FUNCTIONS ====================
+        function showSaveRouteModal(isSaveAs = false, isEditing = false, routeName = '') {
             currentSaveAction = isSaveAs ? 'saveAs' : 'save';
+            isEditingExistingRoute = isEditing;
+            existingRouteName = routeName;
             
             const modal = document.getElementById('saveRouteModal');
             const modalTitle = document.getElementById('saveModalTitle');
             const modalIcon = document.getElementById('saveModalIcon');
             const saveOptionsGroup = document.getElementById('saveOptionsGroup');
             const confirmBtn = document.getElementById('confirmSaveBtn');
+            const routeNameInput = document.getElementById('routeNameInput');
             
             if (isSaveAs) {
+                // Save As Modal
                 modalTitle.textContent = 'Save As New Route';
+                modalIcon.className = 'fas fa-copy';
                 confirmBtn.innerHTML = '<i class="fas fa-check"></i> Save As New';
                 saveOptionsGroup.style.display = 'none';
+                
+                // Set default name
+                if (currentRouteToSave && currentRouteToSave.departure && currentRouteToSave.arrival) {
+                    routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
+                } else {
+                    routeNameInput.value = '';
+                }
+                routeNameInput.readOnly = false;
+                routeNameInput.style.background = 'white';
+                routeNameInput.placeholder = 'Enter name for new route';
+                
+            } else if (isEditing) {
+                // Editing existing route - Simple Overwrite Confirmation
+                modalTitle.textContent = 'Overwrite Route';
+                modalIcon.className = 'fas fa-sync-alt';
+                confirmBtn.innerHTML = '<i class="fas fa-check"></i> Overwrite';
+                saveOptionsGroup.style.display = 'none';
+                
+                // Show existing route name (read-only)
+                routeNameInput.value = routeName;
+                routeNameInput.readOnly = true;
+                routeNameInput.style.background = '#f5f5f5';
+                routeNameInput.placeholder = '';
+                
+                // Change modal style for overwrite
+                modal.classList.add('overwrite-mode');
+                
             } else {
+                // Normal Save (New Route)
                 modalTitle.textContent = 'Save Route';
+                modalIcon.className = 'fas fa-save';
                 confirmBtn.innerHTML = '<i class="fas fa-check"></i> Save Route';
                 saveOptionsGroup.style.display = 'block';
+                modal.classList.remove('overwrite-mode');
+                
+                // Set default route name
+                if (currentRouteToSave && currentRouteToSave.departure && currentRouteToSave.arrival) {
+                    routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
+                } else {
+                    routeNameInput.value = '';
+                }
+                routeNameInput.readOnly = false;
+                routeNameInput.style.background = 'white';
+                routeNameInput.placeholder = 'Enter route name';
             }
             
-            // تنظیم نام پیشنهادی
-            const routeNameInput = document.getElementById('routeNameInput');
-            if (currentRouteToSave && currentRouteToSave.departure && currentRouteToSave.arrival) {
-                routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
-            } else {
-                routeNameInput.value = '';
-            }
-            
-            // انتخاب گزینه پیش‌فرض
-            document.getElementById('saveOptionNew').checked = true;
-            
+            // Show modal
             modal.classList.add('active');
-            routeNameInput.focus();
-            routeNameInput.select();
+            if (!isEditing) {
+                routeNameInput.focus();
+                routeNameInput.select();
+            }
         }
 
         function closeSaveRouteModal() {
-            document.getElementById('saveRouteModal').classList.remove('active');
+            const modal = document.getElementById('saveRouteModal');
+            modal.classList.remove('active');
+            modal.classList.remove('overwrite-mode');
+            
+            const routeNameInput = document.getElementById('routeNameInput');
+            routeNameInput.readOnly = false;
+            routeNameInput.style.background = 'white';
+            
             currentRouteToSave = null;
-            currentSaveAction = '';
+            isEditingExistingRoute = false;
+            existingRouteId = null;
+            existingRouteName = '';
         }
 
-async function executeSaveWithName() {
+// ==================== SIMPLE SAVE FUNCTION ====================
+async function simpleSaveWithAction(action, routeId = null, routeName = '') {
     try {
-        console.log('🔍 Starting save process...');
-        
-        // Check if route name is provided
-        const routeName = document.getElementById('routeNameInput').value.trim();
-        if (!routeName) {
-            showStatus('Please enter a route name', 'error');
-            return;
-        }
-        
-        // ======== CRITICAL FIX: Check if currentRouteToSave exists ========
+        // ========== 1. CHECK IF WE HAVE ROUTE DATA ==========
         if (!currentRouteToSave) {
-            console.error('❌ currentRouteToSave is null! Cannot save route.');
-            showStatus('❌ Route data not found. Please create route and click Save button first.', 'error');
-            closeSaveRouteModal();
-            return;
+            console.log('🔄 currentRouteToSave is null, checking route layer...');
+            
+            // Try to get route from the map layer
+            const routeFeatures = routeLayer.getSource().getFeatures();
+            if (routeFeatures.length === 0) {
+                showStatus('❌ No route to save. Please create a route first.', 'error');
+                return;
+            }
+            
+            const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+            const geometry = latestRouteFeature.getGeometry();
+            
+            if (!geometry) {
+                showStatus('❌ Route has no geometry data', 'error');
+                return;
+            }
+            
+            // ========== 2. RECREATE ROUTE DATA FROM LAYER ==========
+            const coordinates = geometry.getCoordinates();
+            const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
+            
+            // Calculate total distance
+            let totalDistance = 0;
+            for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
+                const coord1 = lonLatCoordinates[i];
+                const coord2 = lonLatCoordinates[i + 1];
+                totalDistance += calculateDistance(coord1, coord2);
+            }
+            
+            // Get airport codes from feature properties or select boxes
+            const props = latestRouteFeature.getProperties();
+            let departure = props.departure || '';
+            let arrival = props.arrival || '';
+            
+            // If not in properties, get from select boxes
+            if (!departure || !arrival) {
+                departure = $('#departureSelect').val() || '';
+                arrival = $('#arrivalSelect').val() || '';
+            }
+            
+            // Clean airport codes
+            departure = departure.replace(/[^A-Z]/g, '').substring(0, 4);
+            arrival = arrival.replace(/[^A-Z]/g, '').substring(0, 4);
+            
+            // Create currentRouteToSave object
+            currentRouteToSave = {
+                isSaveAs: (action === 'save_as'),
+                coordinates: lonLatCoordinates,
+                totalDistance: totalDistance,
+                departure: departure,
+                arrival: arrival,
+                feature: latestRouteFeature
+            };
+            
+            console.log('🔄 Recreated currentRouteToSave from route layer:', {
+                departure: departure,
+                arrival: arrival,
+                points: lonLatCoordinates.length,
+                distance: totalDistance
+            });
         }
         
-        // Validate required fields
-        if (!currentRouteToSave.departure || !currentRouteToSave.arrival || !currentRouteToSave.coordinates) {
-            showStatus('❌ Route data is incomplete. Please recreate the route.', 'error');
-            closeSaveRouteModal();
-            return;
+        // ========== 3. CHECK IF EDITING EXISTING ROUTE ==========
+        if (isEditingExistingRoute && existingRouteId) {
+            routeId = existingRouteId;
+            action = 'overwrite';
         }
         
-        // Determine save type (new or overwrite)
-        let saveType = 'new';
-        if (currentSaveAction === 'save') {
-            const selectedOption = document.querySelector('input[name="saveOption"]:checked');
-            saveType = selectedOption ? selectedOption.value : 'new';
+        // ========== 4. USE STORED ROUTE NAME IF EDITING ==========
+        if (isEditingExistingRoute && existingRouteName) {
+            routeName = existingRouteName;
         }
         
-        // Prepare data for API request
-        const routeData = {
+        // ========== 5. USE DEFAULT NAME IF EMPTY ==========
+        if (!routeName || routeName.trim() === '') {
+            routeName = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
+        }
+        
+        // ========== 6. PREPARE PAYLOAD ==========
+        const payload = {
             name: routeName,
             departure: currentRouteToSave.departure,
             arrival: currentRouteToSave.arrival,
             coordinates: currentRouteToSave.coordinates,
-            total_distance: parseFloat(currentRouteToSave.totalDistance.toFixed(2)),
-            flight_time: calculateFlightTime(currentRouteToSave.totalDistance),
-            version: document.getElementById('routeVersionInput')?.value.trim() || '',
-            description: `Saved via FlightFuel on ${new Date().toLocaleString()}`
+            total_distance: currentRouteToSave.totalDistance
         };
         
-        console.log('📤 Saving route:', { 
-            routeName: routeData.name,
-            departure: routeData.departure,
-            arrival: routeData.arrival,
-            coordinatesCount: routeData.coordinates.length,
-            saveType: saveType,
-            action: currentSaveAction 
-        });
-        
-        // Determine API endpoint based on save action
+        // ========== 7. SET API URL BASED ON ACTION ==========
         let apiUrl = '/api/save-route/';
-        if (currentSaveAction === 'saveAs') {
+        
+        if (action === 'save_as') {
             apiUrl = '/api/save-route-as/';
+        } else if (action === 'overwrite' && routeId) {
+            apiUrl = '/api/save-route/';
+            payload.action = 'overwrite';
+            payload.route_id = routeId;
         }
         
-        // Send request to server
+        console.log('📤 Saving to:', apiUrl, 'Payload:', payload);
+        
+        // ========== 8. SEND REQUEST ==========
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify(routeData)
+            body: JSON.stringify(payload)
         });
         
-        // Check response status
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Server response error:', errorText);
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-        }
-        
         const data = await response.json();
+        console.log('📥 Response:', data);
         
-        // Handle server response
+        // ========== 9. HANDLE RESPONSE ==========
         if (data.status === 'success') {
-            // Update current route feature with new name BEFORE clearing
-            if (currentRouteToSave && currentRouteToSave.feature) {
-                currentRouteToSave.feature.set('name', routeName);
-                updateRouteInfo();
+            showStatus(`✅ ${data.message}`, 'success');
+            
+            // Update route_id in the feature if we have one
+            if (data.route_id && currentRouteToSave && currentRouteToSave.feature) {
+                currentRouteToSave.feature.set('route_id', data.route_id);
+                existingRouteId = data.route_id;
+                existingRouteName = routeName;
+                
+                console.log('✅ Updated feature with route_id:', data.route_id);
             }
             
-            // Show success message
-            const actionMsg = currentSaveAction === 'saveAs' ? 'saved as new copy' : 'saved';
-            showStatus(`✅ Route "${routeName}" ${actionMsg} successfully!`, 'success');
-            
-            // Close modal AFTER all operations
+            // Close modals
             closeSaveRouteModal();
+            closeConflictPopup();
             
-            // Clear saved data AFTER success
-            currentRouteToSave = null;
-            currentSaveAction = '';
+            // Update delete button visibility
+            updateDeleteButtonVisibility();
             
+        } else if (data.status === 'conflict') {
+            // Show conflict resolution popup
+            showConflictPopup(data);
         } else {
-            // Server returned error status
-            showStatus(`❌ Error: ${data.message}`, 'error');
+            showStatus(`❌ ${data.message}`, 'error');
         }
         
     } catch (error) {
-        console.error('❌ Save process failed:', error);
+        console.error('❌ Save error:', error);
         showStatus(`❌ Save failed: ${error.message}`, 'error');
     }
 }
+
+        // ==================== EXECUTE SAVE WITH NAME ====================
+        async function executeSaveWithName() {
+            console.log('🔧 executeSaveWithName called');
+            
+            try {
+                // Get route name
+                const routeNameInput = document.getElementById('routeNameInput');
+                const routeName = routeNameInput ? routeNameInput.value.trim() : '';
+                
+                if (!routeName) {
+                    showStatus('Please enter a route name', 'error');
+                    return;
+                }
+                
+                // Determine action
+                let action = 'new';
+                const modal = document.getElementById('saveRouteModal');
+                const modalTitle = document.getElementById('saveModalTitle');
+                
+                // Check modal type
+                if (modal.classList.contains('overwrite-mode')) {
+                    action = 'overwrite';
+                } else if (modalTitle && modalTitle.textContent.includes('Save As')) {
+                    action = 'save_as';
+                }
+                
+                // Use your existing function
+                await simpleSaveWithAction(action, existingRouteId, routeName);
+                
+            } catch (error) {
+                console.error('❌ executeSaveWithName error:', error);
+                showStatus(`❌ Save failed: ${error.message}`, 'error');
+            }
+        }
+
+        // ==================== SAVE ROUTE (MAIN FUNCTION) ====================
+        function saveCurrentRoute(isSaveAs = false) {
+            try {
+                console.log('💾 Save requested:', { isSaveAs });
+                
+                const routeFeatures = routeLayer.getSource().getFeatures();
+                if (routeFeatures.length === 0) {
+                    showStatus('❌ No route to save', 'error');
+                    return;
+                }
+                
+                const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+                if (!latestRouteFeature) {
+                    showStatus('❌ Route feature not found', 'error');
+                    return;
+                }
+                
+                const geometry = latestRouteFeature.getGeometry();
+                if (!geometry) {
+                    showStatus('❌ Route has no geometry', 'error');
+                    return;
+                }
+                
+                // Calculate coordinates and distance
+                const coordinates = geometry.getCoordinates();
+                const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
+                
+                let totalDistance = 0;
+                for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
+                    const coord1 = lonLatCoordinates[i];
+                    const coord2 = lonLatCoordinates[i + 1];
+                    totalDistance += calculateDistance(coord1, coord2);
+                }
+                
+                // Get airport codes
+                let departure = '';
+                let arrival = '';
+                
+                // Check if route has properties (loaded from search)
+                const props = latestRouteFeature.getProperties();
+                departure = props.departure || '';
+                arrival = props.arrival || '';
+                
+                // Get route ID and name if exists
+                existingRouteId = props.route_id || null;
+                const routeName = props.name || '';
+                
+                // If not from properties, get from select boxes
+                if (!departure || !arrival) {
+                    departure = $('#departureSelect').val();
+                    arrival = $('#arrivalSelect').val();
+                }
+                
+                // Clean codes
+                departure = departure.replace(/[^A-Z]/g, '').substring(0, 4);
+                arrival = arrival.replace(/[^A-Z]/g, '').substring(0, 4);
+                
+                console.log('✅ Airport codes:', { departure, arrival, existingRouteId, routeName });
+                
+                // Prepare data for saving
+                currentRouteToSave = {
+                    isSaveAs: isSaveAs,
+                    coordinates: lonLatCoordinates,
+                    totalDistance: totalDistance,
+                    departure: departure,
+                    arrival: arrival,
+                    feature: latestRouteFeature
+                };
+                
+                // Determine if editing existing route
+                const isEditing = !!existingRouteId;
+                
+                if (isEditing && !isSaveAs) {
+                    // Editing existing route - Show simple overwrite confirmation
+                    showSaveRouteModal(false, true, routeName);
+                } else {
+                    // New route or Save As - Show normal modal
+                    showSaveRouteModal(isSaveAs, false, '');
+                }
+                
+            } catch (error) {
+                console.error('❌ Error in saveCurrentRoute:', error);
+                showStatus(`❌ Save error: ${error.message}`, 'error');
+            }
+        }
+
+        // ==================== CONFLICT POPUP ====================
+        function showConflictPopup(conflictData) {
+            console.log('🔄 Showing conflict popup:', conflictData);
+            
+            conflictDataSimple = conflictData;
+            
+            const detailsGrid = document.getElementById('existingRouteDetails');
+            if (conflictData && conflictData.existing_route) {
+                detailsGrid.innerHTML = `
+                    <div class="route-detail-item">
+                        <span class="label">Route Name:</span>
+                        <span class="value">${conflictData.existing_route.name || 'N/A'}</span>
+                    </div>
+                    <div class="route-detail-item">
+                        <span class="label">Route ID:</span>
+                        <span class="value">${conflictData.existing_route.id || 'N/A'}</span>
+                    </div>
+                    <div class="route-detail-item">
+                        <span class="label">Departure:</span>
+                        <span class="value">${conflictData.existing_route.departure || 'N/A'}</span>
+                    </div>
+                    <div class="route-detail-item">
+                        <span class="label">Arrival:</span>
+                        <span class="value">${conflictData.existing_route.arrival || 'N/A'}</span>
+                    </div>
+                    <div class="route-detail-item">
+                        <span class="label">Created:</span>
+                        <span class="value">${conflictData.existing_route.created_at || 'N/A'}</span>
+                    </div>
+                `;
+            }
+            
+            // HIDE "Save as New" option in conflict popup
+            const saveAsOption = document.querySelector('.option-save-as');
+            if (saveAsOption) {
+                saveAsOption.style.display = 'none';
+            }
+            
+            // Show the conflict popup
+            document.getElementById('conflictPopup').classList.add('active');
+        }
+
+        function closeConflictPopup() {
+            document.getElementById('conflictPopup').classList.remove('active');
+            conflictDataSimple = null;
+        }
+
+        // ==================== CONFLICT CHOICE HANDLER ====================
+        function handleConflictChoice(choice) {
+            console.log('🔄 User chose:', choice);
+            
+            if (!conflictDataSimple || !conflictDataSimple.existing_route) {
+                showStatus('❌ Error: Data not available', 'error');
+                closeConflictPopup();
+                return;
+            }
+            
+            const existingRoute = conflictDataSimple.existing_route;
+            
+            switch(choice) {
+                case 'overwrite':
+                    // Overwrite existing route
+                    simpleSaveWithAction('overwrite', existingRoute.id, existingRoute.name);
+                    break;
+                    
+                case 'save_as':
+                    // Save as new version (not implemented in this version)
+                    simpleSaveWithAction('save_as', null, `${existingRoute.name}_v2`);
+                    break;
+                    
+                case 'cancel':
+                    closeSaveRouteModal();
+                    closeConflictPopup();
+                    showStatus('Save cancelled', 'info');
+                    break;
+            }
+            
+            conflictDataSimple = null;
+        }
 
         // ==================== SIMPLE EDIT TOGGLE ====================
         function toggleEditing() {
@@ -575,6 +1151,13 @@ async function executeSaveWithName() {
         }
 
         // ==================== EDIT TOOLS FUNCTIONS ====================
+        let modifyInteraction = null;
+        let snapInteraction = null;
+        let routeFeature = null;
+        let drawInteraction = null;
+        let measureInteraction = null;
+        let currentTool = 'select';
+
         function enableRouteEditing() {
             const routeSource = routeLayer.getSource();
             const routeFeatures = routeSource.getFeatures();
@@ -619,6 +1202,25 @@ async function executeSaveWithName() {
             showStatus('Route editing disabled', 'info');
         }
 
+        function removeAllInteractions() {
+            if (drawInteraction) {
+                map.removeInteraction(drawInteraction);
+                drawInteraction = null;
+            }
+            if (measureInteraction) {
+                map.removeInteraction(measureInteraction);
+                measureInteraction = null;
+            }
+            if (modifyInteraction) {
+                map.removeInteraction(modifyInteraction);
+                modifyInteraction = null;
+            }
+            if (snapInteraction) {
+                map.removeInteraction(snapInteraction);
+                snapInteraction = null;
+            }
+        }
+
         // ==================== MODE MANAGEMENT ====================
         let currentMode = 'view';
 
@@ -642,7 +1244,7 @@ async function executeSaveWithName() {
                     `;
                 }
                 
-                // مخفی کردن Edit Tools
+                // مخفی کردن Edit Tools (و دکمه Delete داخلش)
                 document.getElementById('editTools').style.display = 'none';
                 if (isEditingEnabled) {
                     toggleEditing();
@@ -664,128 +1266,14 @@ async function executeSaveWithName() {
                     `;
                 }
                 
-                // نمایش Edit Tools
+                // نمایش Edit Tools (و دکمه Delete داخلش)
                 document.getElementById('editTools').style.display = 'block';
+                
+                // به‌روزرسانی visibility دکمه Delete
+                updateDeleteButtonVisibility();
             }
         }
 
-        // ==================== SAVE ROUTE ====================
-function saveCurrentRoute(isSaveAs = false) {
-    try {
-        console.log('💾 Save requested:', { isSaveAs });
-        
-        // Check if route exists
-        const routeFeatures = routeLayer.getSource().getFeatures();
-        if (routeFeatures.length === 0) {
-            showStatus('❌ No route to save', 'error');
-            return;
-        }
-        
-        const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
-        if (!latestRouteFeature) {
-            showStatus('❌ Route feature not found', 'error');
-            return;
-        }
-        
-        // Check geometry
-        const geometry = latestRouteFeature.getGeometry();
-        if (!geometry) {
-            showStatus('❌ Route has no geometry', 'error');
-            return;
-        }
-        
-        // Calculate coordinates and distance
-        const coordinates = geometry.getCoordinates();
-        const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
-        
-        let totalDistance = 0;
-        for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
-            const coord1 = lonLatCoordinates[i];
-            const coord2 = lonLatCoordinates[i + 1];
-            totalDistance += calculateDistance(coord1, coord2);
-        }
-        
-        // === FIXED: Get airport codes properly ===
-        let departure = '';
-        let arrival = '';
-        
-        // Method 1: Get from feature properties (when loaded from search)
-        const props = latestRouteFeature.getProperties();
-        departure = props.departure || '';
-        arrival = props.arrival || '';
-        
-        // Method 2: Get from select boxes (when created manually)
-        if (!departure || !arrival) {
-            departure = $('#departureSelect').val();
-            arrival = $('#arrivalSelect').val();
-        }
-        
-        // Method 3: Try to parse from select2 data
-        if (!departure || !arrival) {
-            const depSelect = $('#departureSelect').select2('data');
-            const arrSelect = $('#arrivalSelect').select2('data');
-            
-            if (depSelect && depSelect[0] && !departure) {
-                departure = depSelect[0].id || depSelect[0].text;
-            }
-            if (arrSelect && arrSelect[0] && !arrival) {
-                arrival = arrSelect[0].id || arrSelect[0].text;
-            }
-        }
-        
-        // Method 4: Last resort - extract from text
-        if (!departure || !arrival) {
-            const depText = $('#departureSelect option:selected').text();
-            const arrText = $('#arrivalSelect option:selected').text();
-            
-            // Extract code from text like "Tehran (THR/OIII)"
-            const extractCode = (text) => {
-                if (!text) return '';
-                // Try IATA code (3 letters)
-                const iataMatch = text.match(/\(([A-Z]{3})\//);
-                if (iataMatch) return iataMatch[1];
-                // Try ICAO code (4 letters)
-                const icaoMatch = text.match(/\/([A-Z]{4})\)/);
-                if (icaoMatch) return icaoMatch[1];
-                return '';
-            };
-            
-            if (!departure) departure = extractCode(depText);
-            if (!arrival) arrival = extractCode(arrText);
-        }
-        
-        // Final check
-        if (!departure || !arrival) {
-            showStatus('❌ Please select departure and arrival airports', 'error');
-            return;
-        }
-        
-        // Clean codes (remove extra characters)
-        departure = departure.replace(/[^A-Z]/g, '').substring(0, 4);
-        arrival = arrival.replace(/[^A-Z]/g, '').substring(0, 4);
-        
-        console.log('✅ Airport codes:', { departure, arrival });
-        
-        // Prepare data for saving
-        currentRouteToSave = {
-            isSaveAs: isSaveAs,
-            coordinates: lonLatCoordinates,
-            totalDistance: totalDistance,
-            departure: departure,
-            arrival: arrival,
-            feature: latestRouteFeature
-        };
-        
-        // Show save modal
-        showSaveRouteModal(isSaveAs);
-        
-    } catch (error) {
-        console.error('❌ Error in saveCurrentRoute:', error);
-        showStatus(`❌ Save error: ${error.message}`, 'error');
-    }
-}
-
-        
         // ==================== AIRPORT LAYER ====================
         const airportSource = new ol.source.Vector({
             loader: function(extent, resolution, projection) {
@@ -928,13 +1416,13 @@ function saveCurrentRoute(isSaveAs = false) {
         });
         map.addLayer(routeLayer);
 
-        // ==================== TOOLTIPS ====================
+        // ==================== TOOLTIPS CONFIGURATION ====================
         const firTooltipElement = document.createElement('div');
         firTooltipElement.className = 'fir-tooltip';
         const firTooltipOverlay = new ol.Overlay({
             element: firTooltipElement,
-            positioning: 'bottom-center',
-            offset: [0, -10],
+            positioning: 'top-center',
+            offset: [0, 10],
             stopEvent: false
         });
         map.addOverlay(firTooltipOverlay);
@@ -943,78 +1431,27 @@ function saveCurrentRoute(isSaveAs = false) {
         wpTooltipElement.className = 'wp-tooltip';
         const wpTooltipOverlay = new ol.Overlay({
             element: wpTooltipElement,
-            positioning: 'bottom-center',
-            offset: [0, -15],
+            positioning: 'top-center',
+            offset: [0, 15],
             stopEvent: false
         });
         map.addOverlay(wpTooltipOverlay);
-        // ==================== MAP INTERACTIONS ====================
-        let modifyInteraction = null;
-        let snapInteraction = null;
-        let routeFeature = null;
-        let drawInteraction = null;
-        let measureInteraction = null;
-        let currentTool = 'select';
 
-        // ==================== UTILITY FUNCTIONS ====================
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-
-        function calculateDistance(coord1, coord2) {
-            const [lon1, lat1] = coord1;
-            const [lon2, lat2] = coord2;
-            
-            const R = 3440.065;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            
-            const a = 
-                Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-            
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        function calculateFlightTime(distanceNm) {
-            const hours = distanceNm / 450;
-            const hourInt = Math.floor(hours);
-            const minuteInt = Math.round((hours - hourInt) * 60);
-            
-            return `${hourInt.toString().padStart(2, '0')}:${minuteInt.toString().padStart(2, '0')}`;
-        }
-
-        function showStatus(message, type) {
-            const statusDiv = document.createElement('div');
-            statusDiv.className = `status-message status-${type}`;
-            statusDiv.innerHTML = message;
-            statusDiv.style.position = 'fixed';
-            statusDiv.style.bottom = '20px';
-            statusDiv.style.right = '20px';
-            statusDiv.style.zIndex = '10000';
-            statusDiv.style.maxWidth = '300px';
-            document.body.appendChild(statusDiv);
-            
-            setTimeout(() => {
-                statusDiv.remove();
-            }, 3000);
+        // Route Tooltip
+        if (!window.routeTooltipElement) {
+            window.routeTooltipElement = document.createElement('div');
+            window.routeTooltipElement.className = 'route-tooltip';
+            window.routeTooltipOverlay = new ol.Overlay({
+                element: window.routeTooltipElement,
+                positioning: 'top-center',
+                offset: [0, 20],
+                stopEvent: false
+            });
+            map.addOverlay(window.routeTooltipOverlay);
         }
 
         // ==================== IATA TO ICAO CONVERSION ====================
-        async function convertToIcaoIfNeeded(code) {
+        async function convertToIcaoIfNeeded(code, return_original_if_not_found = true) {
             code = code.toUpperCase().trim();
             
             if (code.length === 4 && /^[A-Z]+$/.test(code)) {
@@ -1024,14 +1461,6 @@ function saveCurrentRoute(isSaveAs = false) {
             
             if (code.length === 3 && /^[A-Z]+$/.test(code)) {
                 try {
-                    const airports = await getAirportsCache();
-                    const airport = airports.find(a => a.iata === code);
-                    
-                    if (airport && airport.icao) {
-                        console.log(`✅ Converted IATA to ICAO: ${code} → ${airport.icao}`);
-                        return airport.icao;
-                    }
-                    
                     const response = await fetch(`/api/airports/search/?code=${code}`);
                     if (response.ok) {
                         const data = await response.json();
@@ -1053,295 +1482,161 @@ function saveCurrentRoute(isSaveAs = false) {
             return code;
         }
 
-        async function getAirportsCache() {
-            const CACHE_KEY = 'airports_data';
-            const CACHE_EXPIRY = 24 * 60 * 60 * 1000;
-            
-            const cached = localStorage.getItem(CACHE_KEY);
-            if (cached) {
-                const { data, timestamp } = JSON.parse(cached);
-                if (Date.now() - timestamp < CACHE_EXPIRY) {
-                    return data;
-                }
-            }
-            
-            try {
-                const response = await fetch('/api/airports/');
-                if (response.ok) {
-                    const geojson = await response.json();
-                    const airports = geojson.features.map(f => ({
-                        iata: f.properties.iata,
-                        icao: f.properties.icao,
-                        name: f.properties.name,
-                        city: f.properties.city,
-                        country: f.properties.country
-                    }));
-                    
-                    localStorage.setItem(CACHE_KEY, JSON.stringify({
-                        data: airports,
-                        timestamp: Date.now()
-                    }));
-                    
-                    console.log(`✅ Airports cache loaded: ${airports.length} airports`);
-                    return airports;
-                }
-            } catch (error) {
-                console.error('❌ Error loading airports cache:', error);
-            }
-            
-            return [];
-        }
-
         // ==================== ROUTE SEARCH FUNCTIONS ====================
-async function executeRouteSearch() {
-    try {
-        const originInput = document.getElementById('searchOrigin').value.trim().toUpperCase();
-        const destinationInput = document.getElementById('searchDestination').value.trim().toUpperCase();
-        
-        console.log('🔍 Searching:', originInput, '→', destinationInput);
-        
-        if (!originInput || !destinationInput) {
-            showStatus('Please enter both origin and destination', 'error');
-            return;
-        }
-        
-        if (originInput === destinationInput) {
-            showStatus('Origin and destination cannot be the same', 'error');
-            return;
-        }
-        
-        const loadingSpinner = document.getElementById('searchLoadingSpinner');
-        const searchButton = document.getElementById('executeRouteSearch');
-        const resultsContainer = document.getElementById('searchResultsContent');
-        const resultsCount = document.getElementById('resultsCount');
-        
-        if (!loadingSpinner || !searchButton || !resultsContainer) {
-            console.error('❌ UI elements not found!');
-            return;
-        }
-        
-        // Show loading
-        loadingSpinner.classList.add('active');
-        searchButton.disabled = true;
-        resultsContainer.innerHTML = '<div class="loading-text">Searching...</div>';
-        resultsCount.textContent = '0';
-        
-        // Call API
-        console.log('📞 Calling API...');
-        const response = await fetch(`/api/route-search/?origin=${originInput}&destination=${destinationInput}`);
-        
-        console.log('📥 API Response status:', response.status);
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('✅ API Response data:', data);
-        
-        // Hide loading
-        loadingSpinner.classList.remove('active');
-        searchButton.disabled = false;
-        
-        // Display results
-        if (data.status === 'error') {
-            showStatus(data.message, 'error');
-            resultsContainer.innerHTML = `
-                <div class="no-results">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <h4>Search Error</h4>
-                    <p>${data.message}</p>
-                </div>
-            `;
-        } else {
-            // SUCCESS - Show results
-            console.log('🎯 Found routes:', data.count);
-            showStatus(`Found ${data.count} route(s)`, 'success');
-            resultsCount.textContent = data.count;
-            
-            if (data.count === 0) {
-                resultsContainer.innerHTML = `
-                    <div class="no-results">
-                        <i class="fas fa-search"></i>
-                        <h4>No Routes Found</h4>
-                        <p>No saved routes found from ${originInput} to ${destinationInput}.</p>
-                    </div>
-                `;
-            } else {
-                // Build HTML for results
-                let html = '';
-                data.routes.forEach((route, index) => {
-                    html += `
-                        <div class="route-result-item" data-route-id="${route.id}">
-                            <div class="route-result-header">
-                                <div class="route-title">
-                                    <i class="fas fa-route"></i>
-                                    ${route.name}
-                                </div>
-                                <div class="route-distance">${route.total_distance ? route.total_distance.toFixed(1) + ' NM' : 'N/A'}</div>
-                            </div>
-                            
-                            <div class="route-details-grid">
-                                <div class="route-detail-item">
-                                    <i class="fas fa-plane-departure"></i>
-                                    <strong>Origin:</strong>
-                                    <span class="route-icao">${route.departure}</span>
-                                </div>
-                                <div class="route-detail-item">
-                                    <i class="fas fa-plane-arrival"></i>
-                                    <strong>Destination:</strong>
-                                    <span class="route-icao">${route.arrival}</span>
-                                </div>
-                                <div class="route-detail-item">
-                                    <i class="fas fa-clock"></i>
-                                    <strong>Flight Time:</strong>
-                                    <span>${route.flight_time || 'N/A'}</span>
-                                </div>
-                                <div class="route-detail-item">
-                                    <i class="fas fa-calendar"></i>
-                                    <strong>Created:</strong>
-                                    <span>${route.created_at}</span>
-                                </div>
-                            </div>
-                            
-                            <div class="route-actions">
-                                <button class="load-route-btn" onclick="window.loadRouteFromSearch(${route.id})">
-                                    <i class="fas fa-map-marker-alt"></i> Load on Map
-                                </button>
-                                <button class="view-details-btn" onclick="window.viewRouteDetails(${route.id})">
-                                    <i class="fas fa-info-circle"></i> Details
-                                </button>
-                            </div>
+        async function executeRouteSearch() {
+            try {
+                const originInput = document.getElementById('searchOrigin').value.trim().toUpperCase();
+                const destinationInput = document.getElementById('searchDestination').value.trim().toUpperCase();
+                
+                console.log('🔍 Searching:', originInput, '→', destinationInput);
+                
+                if (!originInput || !destinationInput) {
+                    showStatus('Please enter both origin and destination', 'error');
+                    return;
+                }
+                
+                if (originInput === destinationInput) {
+                    showStatus('Origin and destination cannot be the same', 'error');
+                    return;
+                }
+                
+                const loadingSpinner = document.getElementById('searchLoadingSpinner');
+                const searchButton = document.getElementById('executeRouteSearch');
+                const resultsContainer = document.getElementById('searchResultsContent');
+                const resultsCount = document.getElementById('resultsCount');
+                
+                if (!loadingSpinner || !searchButton || !resultsContainer) {
+                    console.error('❌ UI elements not found!');
+                    return;
+                }
+                
+                // Show loading
+                loadingSpinner.classList.add('active');
+                searchButton.disabled = true;
+                resultsContainer.innerHTML = '<div class="loading-text">Searching...</div>';
+                resultsCount.textContent = '0';
+                
+                // Call API
+                console.log('📞 Calling API...');
+                const response = await fetch(`/api/route-search/?origin=${originInput}&destination=${destinationInput}`);
+                
+                console.log('📥 API Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('✅ API Response data:', data);
+                
+                // Hide loading
+                loadingSpinner.classList.remove('active');
+                searchButton.disabled = false;
+                
+                // Display results
+                if (data.status === 'error') {
+                    showStatus(data.message, 'error');
+                    resultsContainer.innerHTML = `
+                        <div class="no-results">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <h4>Search Error</h4>
+                            <p>${data.message}</p>
                         </div>
                     `;
-                });
+                } else {
+                    // SUCCESS - Show results
+                    console.log('🎯 Found routes:', data.count);
+                    showStatus(`Found ${data.count} route(s)`, 'success');
+                    resultsCount.textContent = data.count;
+                    
+                    if (data.count === 0) {
+                        resultsContainer.innerHTML = `
+                            <div class="no-results">
+                                <i class="fas fa-search"></i>
+                                <h4>No Routes Found</h4>
+                                <p>No saved routes found from ${originInput} to ${destinationInput}.</p>
+                            </div>
+                        `;
+                    } else {
+                        // Build HTML for results
+                        let html = '';
+                        data.routes.forEach((route, index) => {
+                            html += `
+                                <div class="route-result-item" data-route-id="${route.id}">
+                                    <div class="route-result-header">
+                                        <div class="route-title">
+                                            <i class="fas fa-route"></i>
+                                            ${route.name}
+                                        </div>
+                                        <div class="route-distance">${route.total_distance ? route.total_distance.toFixed(1) + ' NM' : 'N/A'}</div>
+                                    </div>
+                                    
+                                    <div class="route-details-grid">
+                                        <div class="route-detail-item">
+                                            <i class="fas fa-plane-departure"></i>
+                                            <strong>Origin:</strong>
+                                            <span class="route-icao">${route.departure}</span>
+                                        </div>
+                                        <div class="route-detail-item">
+                                            <i class="fas fa-plane-arrival"></i>
+                                            <strong>Destination:</strong>
+                                            <span class="route-icao">${route.arrival}</span>
+                                        </div>
+                                        <div class="route-detail-item">
+                                            <i class="fas fa-clock"></i>
+                                            <strong>Flight Time:</strong>
+                                            <span>${route.flight_time || 'N/A'}</span>
+                                        </div>
+                                        <div class="route-detail-item">
+                                            <i class="fas fa-calendar"></i>
+                                            <strong>Created:</strong>
+                                            <span>${route.created_at}</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="route-actions">
+                                        <button class="load-route-btn" onclick="window.loadRouteFromSearch(${route.id})">
+                                            <i class="fas fa-map-marker-alt"></i> Load on Map
+                                        </button>
+                                        <button class="view-details-btn" onclick="window.viewRouteDetails(${route.id})">
+                                            <i class="fas fa-info-circle"></i> Details
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        
+                        resultsContainer.innerHTML = html;
+                        console.log('✅ Results displayed');
+                    }
+                }
                 
-                resultsContainer.innerHTML = html;
-                console.log('✅ Results displayed');
+            } catch (error) {
+                console.error('❌ Route search error:', error);
+                
+                const loadingSpinner = document.getElementById('searchLoadingSpinner');
+                const searchButton = document.getElementById('executeRouteSearch');
+                const resultsContainer = document.getElementById('searchResultsContent');
+                
+                if (loadingSpinner) loadingSpinner.classList.remove('active');
+                if (searchButton) searchButton.disabled = false;
+                
+                if (resultsContainer) {
+                    resultsContainer.innerHTML = `
+                        <div class="no-results">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <h4>Search Error</h4>
+                            <p>Failed to search routes. Please try again.</p>
+                            <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
+                                Error: ${error.message}
+                            </p>
+                        </div>
+                    `;
+                }
+                
+                showStatus('Error searching routes', 'error');
             }
         }
-        
-    } catch (error) {
-        console.error('❌ Route search error:', error);
-        
-        const loadingSpinner = document.getElementById('searchLoadingSpinner');
-        const searchButton = document.getElementById('executeRouteSearch');
-        const resultsContainer = document.getElementById('searchResultsContent');
-        
-        if (loadingSpinner) loadingSpinner.classList.remove('active');
-        if (searchButton) searchButton.disabled = false;
-        
-        if (resultsContainer) {
-            resultsContainer.innerHTML = `
-                <div class="no-results">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <h4>Search Error</h4>
-                    <p>Failed to search routes. Please try again.</p>
-                    <p style="font-size: 12px; margin-top: 10px; color: #dc3545;">
-                        Error: ${error.message}
-                    </p>
-                </div>
-            `;
-        }
-        
-        showStatus('Error searching routes', 'error');
-    }
-}
-
-function displayRouteSearchResults(routes, originalOrigin, originalDestination, data = {}) {
-    console.log('🔄 Displaying search results...');
-    
-    const resultsContainer = document.getElementById('searchResultsContent');
-    const resultsCount = document.getElementById('resultsCount');
-    
-    if (!resultsContainer || !resultsCount) {
-        console.error('❌ Results container not found!');
-        return;
-    }
-    
-    console.log('🔍 Found routes:', routes.length);
-    
-    if (!routes || routes.length === 0) {
-        let searchInfo = '';
-        if (data.search) {
-            const { origin_icao, destination_icao } = data.search;
-            if (origin_icao && origin_icao !== originalOrigin) {
-                searchInfo += `<div class="conversion-info">Origin converted: ${originalOrigin} → ${origin_icao}</div>`;
-            }
-            if (destination_icao && destination_icao !== originalDestination) {
-                searchInfo += `<div class="conversion-info">Destination converted: ${originalDestination} → ${destination_icao}</div>`;
-            }
-        }
-        
-        resultsContainer.innerHTML = `
-            <div class="no-results">
-                <i class="fas fa-search"></i>
-                <h4>No Routes Found</h4>
-                <p>No saved routes found from ${originalOrigin} to ${originalDestination}.</p>
-                ${searchInfo}
-            </div>
-        `;
-        resultsCount.textContent = '0';
-        return;
-    }
-    
-    // اگر routes وجود دارد
-    resultsCount.textContent = routes.length;
-    
-    let html = '';
-    routes.forEach((route, index) => {
-        const routeName = route.name || `Route ${route.departure} to ${route.arrival}`;
-        const distance = route.total_distance ? `${route.total_distance.toFixed(1)} NM` : 'N/A';
-        const flightTime = route.flight_time || 'N/A';
-        const waypointCount = route.waypoints ? route.waypoints.length : 0;
-        const createdDate = route.created_at ? new Date(route.created_at).toLocaleDateString() : 'Unknown';
-        const createdBy = route.created_by || 'Unknown';
-        
-        html += `
-            <div class="route-result-item" data-route-id="${route.id}">
-                <div class="route-result-header">
-                    <div class="route-title">
-                        <i class="fas fa-route"></i>
-                        ${routeName}
-                    </div>
-                    <div class="route-distance">${distance}</div>
-                </div>
-                
-                <div class="route-details-grid">
-                    <div class="route-detail-item">
-                        <i class="fas fa-plane-departure"></i>
-                        <strong>Origin:</strong>
-                        <span class="route-icao">${route.departure}</span>
-                    </div>
-                    <div class="route-detail-item">
-                        <i class="fas fa-plane-arrival"></i>
-                        <strong>Destination:</strong>
-                        <span class="route-icao">${route.arrival}</span>
-                    </div>
-                    <div class="route-detail-item">
-                        <i class="fas fa-clock"></i>
-                        <strong>Flight Time:</strong>
-                        <span>${flightTime}</span>
-                    </div>
-                    <div class="route-detail-item">
-                        <i class="fas fa-map-marker-alt"></i>
-                        <strong>Waypoints:</strong>
-                        <span>${waypointCount}</span>
-                    </div>
-                </div>
-                
-                <div class="route-actions">
-                    <button class="load-route-btn" onclick="window.loadRouteFromSearch(${route.id})">
-                        <i class="fas fa-map-marker-alt"></i> Load on Map
-                    </button>
-                </div>
-            </div>
-        `;
-    });
-    
-    console.log('✅ Setting results HTML');
-    resultsContainer.innerHTML = html;
-}
 
         function openRouteSearchModal() {
             const modal = document.getElementById('routeSearchModal');
@@ -1579,66 +1874,76 @@ function displayRouteSearchResults(routes, originalOrigin, originalDestination, 
                 });
         }
 
-        function loadRouteOnMap(route) {
-            console.log('🔍 Loading Route:', route);
-            
-            routeLayer.getSource().clear();
-            
-            if (!route.coordinates || !Array.isArray(route.coordinates)) {
-                showStatus('Error: Route has no valid coordinates data', 'error');
-                return;
-            }
-            
-            let coordinatesData = route.coordinates;
-            if (typeof coordinatesData === 'string') {
-                try {
-                    coordinatesData = JSON.parse(coordinatesData);
-                } catch (e) {
-                    console.error('Failed to parse coordinates:', e);
-                    showStatus('Error: Invalid coordinates format', 'error');
-                    return;
-                }
-            }
-            
-            if (!Array.isArray(coordinatesData)) {
-                showStatus('Error: Coordinates is not an array', 'error');
-                return;
-            }
-            
-            const coordinates = coordinatesData.map(coord => {
-                if (Array.isArray(coord) && coord.length >= 2) {
-                    return ol.proj.fromLonLat([coord[0], coord[1]]);
-                }
-                return ol.proj.fromLonLat([0, 0]);
-            }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
-            
-            if (coordinates.length < 2) {
-                showStatus('Error: Route has insufficient valid coordinates', 'error');
-                return;
-            }
-            
-            routeFeature = new ol.Feature({
-                geometry: new ol.geom.LineString(coordinates),
-                name: route.name || `Route ${route.departure} to ${route.arrival}`,
-                departure: route.departure,
-                arrival: route.arrival
-            });
-            
-            console.log('✅ Feature created with name:', routeFeature.get('name'));
-            
-            routeLayer.getSource().addFeature(routeFeature);
-            routeLayer.setVisible(true);
-            document.getElementById('toggleRoute').checked = true;
-            sessionStorage.setItem('toggleRoute', 'true');
-            
-            updateRouteInfoForSavedRoute(route);
-            document.getElementById('routeInfo').classList.add('active');
-            
-            $('#departureSelect').val(route.departure).trigger('change');
-            $('#arrivalSelect').val(route.arrival).trigger('change');
-            
-            zoomToRoute(coordinates);
+function loadRouteOnMap(route) {
+    console.log('🔍 Loading Route:', route);
+    
+    routeLayer.getSource().clear();
+    
+    if (!route.coordinates || !Array.isArray(route.coordinates)) {
+        showStatus('Error: Route has no valid coordinates data', 'error');
+        return;
+    }
+    
+    let coordinatesData = route.coordinates;
+    if (typeof coordinatesData === 'string') {
+        try {
+            coordinatesData = JSON.parse(coordinatesData);
+        } catch (e) {
+            console.error('Failed to parse coordinates:', e);
+            showStatus('Error: Invalid coordinates format', 'error');
+            return;
         }
+    }
+    
+    if (!Array.isArray(coordinatesData)) {
+        showStatus('Error: Coordinates is not an array', 'error');
+        return;
+    }
+    
+    const coordinates = coordinatesData.map(coord => {
+        if (Array.isArray(coord) && coord.length >= 2) {
+            return ol.proj.fromLonLat([coord[0], coord[1]]);
+        }
+        return ol.proj.fromLonLat([0, 0]);
+    }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
+    
+    if (coordinates.length < 2) {
+        showStatus('Error: Route has insufficient valid coordinates', 'error');
+        return;
+    }
+    
+    // ✅ CRITICAL: Create feature with ALL properties including route_id
+    routeFeature = new ol.Feature({
+        geometry: new ol.geom.LineString(coordinates),
+        name: route.name || `Route ${route.departure} to ${route.arrival}`,
+        departure: route.departure,
+        arrival: route.arrival,
+        route_id: route.id,  // ✅ این خط را حتماً داشته باشید
+        id: route.id          // ✅ اضافه کردن id هم
+    });
+    
+    console.log('✅ Feature created with route_id:', route.id);
+    
+    routeLayer.getSource().addFeature(routeFeature);
+    routeLayer.setVisible(true);
+    document.getElementById('toggleRoute').checked = true;
+    sessionStorage.setItem('toggleRoute', 'true');
+    
+    updateRouteInfoForSavedRoute(route);
+    document.getElementById('routeInfo').classList.add('active');
+    
+    // ✅ CRITICAL: Set the global variables
+    existingRouteId = route.id;
+    existingRouteName = route.name || `Route ${route.departure} to ${route.arrival}`;
+    
+    $('#departureSelect').val(route.departure).trigger('change');
+    $('#arrivalSelect').val(route.arrival).trigger('change');
+    
+    // به‌روزرسانی دکمه Delete
+    setTimeout(updateDeleteButtonVisibility, 100);
+    
+    zoomToRoute(coordinates);
+}
 
         function updateRouteInfo() {
             if (routeFeature) {
@@ -1945,25 +2250,6 @@ function displayRouteSearchResults(routes, originalOrigin, originalDestination, 
         });
 
         // ==================== TOOL SELECTION ====================
-        function removeAllInteractions() {
-            if (drawInteraction) {
-                map.removeInteraction(drawInteraction);
-                drawInteraction = null;
-            }
-            if (measureInteraction) {
-                map.removeInteraction(measureInteraction);
-                measureInteraction = null;
-            }
-            if (modifyInteraction) {
-                map.removeInteraction(modifyInteraction);
-                modifyInteraction = null;
-            }
-            if (snapInteraction) {
-                map.removeInteraction(snapInteraction);
-                snapInteraction = null;
-            }
-        }
-
         function activateTool(toolName) {
             removeAllInteractions();
             currentTool = toolName;
@@ -2143,6 +2429,7 @@ function displayRouteSearchResults(routes, originalOrigin, originalDestination, 
         document.getElementById('viewMode').addEventListener('click', function() {
             currentMode = 'view';
             updateModeUI();
+            updateDeleteButtonVisibility();
             
             // اگر در حال ویرایش بودیم، غیرفعالش کن
             if (isEditingEnabled) {
@@ -2155,6 +2442,7 @@ function displayRouteSearchResults(routes, originalOrigin, originalDestination, 
         document.getElementById('editMode').addEventListener('click', function() {
             currentMode = 'edit';
             updateModeUI();
+            updateDeleteButtonVisibility();
             
             // اگر روتی وجود دارد، ویرایش را پیشنهاد کن
             const routeFeatures = routeLayer.getSource().getFeatures();
@@ -2173,6 +2461,25 @@ function displayRouteSearchResults(routes, originalOrigin, originalDestination, 
         document.getElementById('btnSaveAs').addEventListener('click', function() {
             saveCurrentRoute(true);
         });
+        document.getElementById('btnDeleteRoute').addEventListener('click', deleteCurrentRoute);
+
+        // ==================== CONFLICT POPUP EVENT LISTENERS ====================
+        document.getElementById('closeConflictPopup').addEventListener('click', closeConflictPopup);
+        document.getElementById('conflictCancelBtn').addEventListener('click', closeConflictPopup);
+        
+        document.getElementById('conflictConfirmBtn').addEventListener('click', function() {
+            const selectedOption = document.querySelector('input[name="conflictOption"]:checked');
+            if (selectedOption) {
+                handleConflictChoice(selectedOption.value);
+            }
+        });
+        
+        // Close popup when clicking outside
+        document.getElementById('conflictPopup').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeConflictPopup();
+            }
+        });
 
         document.getElementById('showDirectRoute').addEventListener('click', function() {
             const departure = $('#departureSelect').val();
@@ -2185,21 +2492,29 @@ function displayRouteSearchResults(routes, originalOrigin, originalDestination, 
             }
         });
 
-        document.getElementById('clearRoute').addEventListener('click', function() {
-            routeLayer.getSource().clear();
-            routeFeature = null;
-            routeLayer.setVisible(false);
-            document.getElementById('toggleRoute').checked = false;
-            sessionStorage.setItem('toggleRoute', 'false');
-            
-            document.getElementById('routeInfo').classList.remove('active');
-            
-            if (isEditingEnabled) {
-                toggleEditing();
-            }
-            
-            showStatus('Route cleared', 'info');
-        });
+document.getElementById('clearRoute').addEventListener('click', function() {
+    routeLayer.getSource().clear();
+    routeFeature = null;
+    routeLayer.setVisible(false);
+    document.getElementById('toggleRoute').checked = false;
+    sessionStorage.setItem('toggleRoute', 'false');
+    
+    document.getElementById('routeInfo').classList.remove('active');
+    
+    // ✅ ریست کردن همه متغیرها
+    currentRouteToSave = null;
+    existingRouteId = null;
+    existingRouteName = '';
+    
+    // به‌روزرسانی دکمه Delete
+    updateDeleteButtonVisibility();
+    
+    if (isEditingEnabled) {
+        toggleEditing();
+    }
+    
+    showStatus('Route cleared', 'info');
+});
 
         // ==================== ROUTE SEARCH EVENT LISTENERS ====================
         document.getElementById('routeSearchBtn').addEventListener('click', openRouteSearchModal);
@@ -2225,41 +2540,26 @@ function displayRouteSearchResults(routes, originalOrigin, originalDestination, 
             }
         });
 
-// ==================== SAVE MODAL EVENT LISTENERS ====================
-document.getElementById('closeSaveModal').addEventListener('click', closeSaveRouteModal);
-document.getElementById('cancelSaveBtn').addEventListener('click', closeSaveRouteModal);
+        // ==================== SAVE MODAL EVENT LISTENERS ====================
+        document.getElementById('closeSaveModal').addEventListener('click', closeSaveRouteModal);
+        document.getElementById('cancelSaveBtn').addEventListener('click', closeSaveRouteModal);
 
-// Confirm button in save modal
-document.getElementById('confirmSaveBtn').addEventListener('click', function() {
-    console.log('🖱️ Confirm Save button clicked');
-    console.log('🔍 currentRouteToSave status:', currentRouteToSave ? 'Exists' : 'NULL');
-    
-    // Check if route data is prepared
-    if (!currentRouteToSave) {
-        showStatus('❌ Route data not prepared. Please create route and click Save button first.', 'error');
-        return;
-    }
-    
-    executeSaveWithName();
-});
+        // Confirm button in save modal
+        document.getElementById('confirmSaveBtn').addEventListener('click', executeSaveWithName);
 
-// Allow Enter key to save
-document.getElementById('routeNameInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        if (!currentRouteToSave) {
-            showStatus('❌ Route not ready for saving', 'error');
-            return;
-        }
-        executeSaveWithName();
-    }
-});
+        // Allow Enter key to save
+        document.getElementById('routeNameInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                executeSaveWithName();
+            }
+        });
 
-// Close modal when clicking outside
-document.getElementById('saveRouteModal').addEventListener('click', function(e) {
-    if (e.target === this) {
-        closeSaveRouteModal();
-    }
-});
+        // Close modal when clicking outside
+        document.getElementById('saveRouteModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeSaveRouteModal();
+            }
+        });
 
         // ==================== LAYER CONTROLS ====================
         function initLayerControls() {
@@ -2399,7 +2699,493 @@ document.getElementById('saveRouteModal').addEventListener('click', function(e) 
             document.addEventListener('touchend', stopResize);
         });
 
+        // ==================== SIMPLE GLOBAL SEARCH ====================
+        document.getElementById('searchButton').addEventListener('click', performSimpleSearch);
+        document.getElementById('globalSearch').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') performSimpleSearch();
+        });
+
+        async function performSimpleSearch() {
+            const searchTerm = document.getElementById('globalSearch').value.trim().toUpperCase();
+            
+            if (!searchTerm) {
+                showStatus('❌ Please enter search term', 'error');
+                return;
+            }
+            
+            console.log('🔍 Searching for:', searchTerm);
+            showStatus(`Searching for "${searchTerm}"...`, 'info');
+            
+            // Reset all highlights
+            resetAllHighlights();
+            
+            try {
+                let foundItems = [];
+                let activatedLayer = null;
+                
+                // ترتیب اولویت جستجو
+                // 1. اول فرودگاه‌ها
+                const airportResults = searchInAirports(searchTerm);
+                if (airportResults.length > 0) {
+                    foundItems = airportResults;
+                    activatedLayer = 'airports';
+                }
+                
+                // 2. اگر فرودگاه پیدا نشد، waypoints
+                else {
+                    const waypointResults = searchInWaypoints(searchTerm);
+                    if (waypointResults.length > 0) {
+                        foundItems = waypointResults;
+                        activatedLayer = 'waypoints';
+                    }
+                    
+                    // 3. اگر waypoint هم پیدا نشد، FIRها
+                    else {
+                        const firResults = searchInFIRs(searchTerm);
+                        if (firResults.length > 0) {
+                            foundItems = firResults;
+                            activatedLayer = 'firs';
+                        }
+                    }
+                }
+                
+                // نمایش نتایج
+                if (foundItems.length > 0) {
+                    displaySearchResults(foundItems, searchTerm);
+                    
+                    // فقط لایه مربوطه را روشن کن، بقیه را خاموش کن
+                    setOnlyLayerActive(activatedLayer);
+                    
+                } else {
+                    showStatus(`❌ No results found for "${searchTerm}"`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Search error:', error);
+                showStatus('❌ Search error occurred', 'error');
+            }
+        }
+
+        // فقط یک لایه را فعال کن، بقیه را غیرفعال
+        function setOnlyLayerActive(layerName) {
+            // همه لایه‌ها را اول خاموش کن
+            airportLayer.setVisible(false);
+            waypointLayer.setVisible(false);
+            firLayer.setVisible(false);
+            
+            document.getElementById('toggleAirports').checked = false;
+            document.getElementById('toggleWaypoints').checked = false;
+            document.getElementById('toggleFIR').checked = false;
+            
+            sessionStorage.setItem('toggleAirports', 'false');
+            sessionStorage.setItem('toggleWaypoints', 'false');
+            sessionStorage.setItem('toggleFIR', 'false');
+            
+            // حالا فقط لایه مورد نظر را روشن کن
+            if (layerName === 'airports') {
+                airportLayer.setVisible(true);
+                document.getElementById('toggleAirports').checked = true;
+                sessionStorage.setItem('toggleAirports', 'true');
+                showStatus('Showing Airports only', 'info');
+            }
+            else if (layerName === 'waypoints') {
+                waypointLayer.setVisible(true);
+                document.getElementById('toggleWaypoints').checked = true;
+                sessionStorage.setItem('toggleWaypoints', 'true');
+                showStatus('Showing Waypoints only', 'info');
+            }
+            else if (layerName === 'firs') {
+                firLayer.setVisible(true);
+                document.getElementById('toggleFIR').checked = true;
+                sessionStorage.setItem('toggleFIR', 'true');
+                showStatus('Showing FIR Regions only', 'info');
+            }
+        }
+
+        // توابع جستجو
+        function searchInAirports(searchTerm) {
+            const results = [];
+            const source = airportLayer.getSource();
+            const features = source.getFeatures();
+            
+            for (const feature of features) {
+                const props = feature.getProperties();
+                const name = props.name || '';
+                const iata = props.iata || '';
+                const icao = props.icao || '';
+                const identifier = props.identifier || '';
+                const city = props.city || '';
+                const country = props.country || '';
+                
+                if (iata === searchTerm || 
+                    icao === searchTerm || 
+                    identifier === searchTerm ||
+                    name.toUpperCase().includes(searchTerm) ||
+                    city.toUpperCase().includes(searchTerm) ||
+                    country.toUpperCase().includes(searchTerm)) {
+                    
+                    highlightFeature(feature, airportLayer, '#1a73e8');
+                    
+                    results.push({
+                        type: 'airport',
+                        feature: feature,
+                        properties: props,
+                        coordinates: feature.getGeometry().getCoordinates()
+                    });
+                    
+                    if (iata === searchTerm || icao === searchTerm || identifier === searchTerm) {
+                        break;
+                    }
+                }
+            }
+            
+            return results;
+        }
+
+        function searchInWaypoints(searchTerm) {
+            const results = [];
+            const source = waypointLayer.getSource();
+            const features = source.getFeatures();
+            
+            for (const feature of features) {
+                const props = feature.getProperties();
+                const identifier = props.identifier || '';
+                const name = props.name || '';
+                const type = props.type || '';
+                const country = props.country || '';
+                
+                if (identifier === searchTerm || 
+                    name.toUpperCase().includes(searchTerm) ||
+                    (type && type.toUpperCase().includes(searchTerm))) {
+                    
+                    highlightFeature(feature, waypointLayer, '#FF6B35');
+                    
+                    results.push({
+                        type: 'waypoint',
+                        feature: feature,
+                        properties: props,
+                        coordinates: feature.getGeometry().getCoordinates()
+                    });
+                    
+                    if (identifier === searchTerm) {
+                        break;
+                    }
+                }
+            }
+            
+            return results;
+        }
+
+        function searchInFIRs(searchTerm) {
+            const results = [];
+            const source = firLayer.getSource();
+            const features = source.getFeatures();
+            
+            for (const feature of features) {
+                const props = feature.getProperties();
+                const identifier = props.identifier || '';
+                const name = props.name || '';
+                const country = props.country || '';
+                const icaoRegion = props.icao_region || '';
+                
+                if (identifier === searchTerm || 
+                    name.toUpperCase().includes(searchTerm) ||
+                    country.toUpperCase().includes(searchTerm) ||
+                    icaoRegion === searchTerm) {
+                    
+                    highlightFeature(feature, firLayer, '#ea4335');
+                    
+                    results.push({
+                        type: 'fir',
+                        feature: feature,
+                        properties: props,
+                        coordinates: feature.getGeometry().getExtent()
+                    });
+                    
+                    if (identifier === searchTerm) {
+                        break;
+                    }
+                }
+            }
+            
+            return results;
+        }
+
+        function highlightFeature(feature, layer, color) {
+            const originalStyle = layer.getStyle();
+            
+            layer.setStyle(function(layerFeature) {
+                if (layerFeature === feature) {
+                    // Highlight style
+                    if (layer === firLayer) {
+                        return new ol.style.Style({
+                            stroke: new ol.style.Stroke({
+                                color: '#ff0000',
+                                width: 4,
+                                lineDash: [5, 5]
+                            }),
+                            fill: new ol.style.Fill({
+                                color: 'rgba(255, 0, 0, 0.2)'
+                            }),
+                            text: new ol.style.Text({
+                                text: feature.get('identifier') || 'FIR',
+                                fill: new ol.style.Fill({color: '#ff0000'}),
+                                stroke: new ol.style.Stroke({color: 'white', width: 3}),
+                                offsetY: -20,
+                                font: 'bold 14px Arial'
+                            })
+                        });
+                    } else {
+                        return new ol.style.Style({
+                            image: new ol.style.Circle({
+                                radius: layer === airportLayer ? 10 : 8,
+                                fill: new ol.style.Fill({color: '#ff0000'}),
+                                stroke: new ol.style.Stroke({
+                                    color: 'white',
+                                    width: 3
+                                })
+                            }),
+                            text: layer === airportLayer ? new ol.style.Text({
+                                text: feature.get('iata') || feature.get('icao') || 'AIRPORT',
+                                offsetY: -15,
+                                fill: new ol.style.Fill({color: '#ff0000'}),
+                                stroke: new ol.style.Stroke({color: 'white', width: 3}),
+                                font: 'bold 12px Arial'
+                            }) : undefined
+                        });
+                    }
+                }
+                
+                // Return original style for other features
+                if (typeof originalStyle === 'function') {
+                    return originalStyle(layerFeature);
+                }
+                return originalStyle;
+            });
+            
+            // Auto-remove highlight after 10 seconds
+            setTimeout(() => {
+                layer.setStyle(originalStyle);
+            }, 10000);
+        }
+
+        function resetAllHighlights() {
+            // Reset airport layer
+            airportLayer.setStyle(new ol.style.Style({
+                image: new ol.style.Circle({
+                    radius: 6,
+                    fill: new ol.style.Fill({color: '#1a73e8'}),
+                    stroke: new ol.style.Stroke({color: 'white', width: 2})
+                })
+            }));
+            
+            // Reset waypoint layer
+            waypointLayer.setStyle(function(feature) {
+                const type = feature.get('type');
+                let color, icon;
+                
+                switch(type) {
+                    case 'VOR': color = '#FF6B35'; icon = 'V'; break;
+                    case 'NDB': color = '#34a853'; icon = 'N'; break;
+                    case 'AIRPORT': color = '#1a73e8'; icon = 'A'; break;
+                    default: color = '#5f6368'; icon = 'W';
+                }
+                
+                return new ol.style.Style({
+                    image: new ol.style.Circle({
+                        radius: 5,
+                        fill: new ol.style.Fill({color: color}),
+                        stroke: new ol.style.Stroke({color: 'white', width: 1.5})
+                    }),
+                    text: new ol.style.Text({
+                        text: feature.get('identifier') + ' ' + icon,
+                        offsetY: -10,
+                        fill: new ol.style.Fill({color: color}),
+                        stroke: new ol.style.Stroke({color: 'white', width: 2}),
+                        font: 'bold 11px Arial'
+                    })
+                });
+            });
+            
+            // Reset FIR layer
+            firLayer.setStyle(function(feature) {
+                const identifier = feature.get('identifier');
+                
+                return new ol.style.Style({
+                    stroke: new ol.style.Stroke({
+                        color: 'rgba(234, 67, 53, 0.7)',
+                        width: 2,
+                        lineDash: [5, 5]
+                    }),
+                    fill: new ol.style.Fill({
+                        color: 'rgba(234, 67, 53, 0.1)'
+                    }),
+                    text: new ol.style.Text({
+                        text: identifier,
+                        fill: new ol.style.Fill({color: '#ea4335'}),
+                        stroke: new ol.style.Stroke({color: 'white', width: 2}),
+                        offsetY: -20,
+                        font: 'bold 12px Arial',
+                        overflow: true
+                    })
+                });
+            });
+        }
+
+        function displaySearchResults(results, searchTerm) {
+            if (results.length === 1) {
+                // Single result - zoom to it
+                const result = results[0];
+                zoomToResult(result);
+                
+                // Show status
+                const name = result.properties.name || 
+                            result.properties.identifier || 
+                            result.properties.iata || 
+                            'Location';
+                showStatus(`✅ Found: ${name}`, 'success');
+                
+            } else {
+                // Multiple results - show simple popup
+                showResultsPopup(results, searchTerm);
+            }
+        }
+
+        function zoomToResult(result) {
+            if (!result || !result.coordinates) return;
+            
+            if (result.type === 'fir') {
+                // Zoom to FIR extent
+                map.getView().fit(result.coordinates, {
+                    padding: [50, 50, 50, 50],
+                    duration: 1000,
+                    maxZoom: 8
+                });
+            } else {
+                // Zoom to point
+                map.getView().animate({
+                    center: result.coordinates,
+                    zoom: result.type === 'airport' ? 12 : 10,
+                    duration: 1000
+                });
+            }
+        }
+
+        function showResultsPopup(results, searchTerm) {
+            // Create a simple popup
+            const popup = document.createElement('div');
+            popup.className = 'search-results-popup';
+            popup.innerHTML = `
+                <div class="popup-header">
+                    <h4><i class="fas fa-search"></i> ${results.length} results for "${searchTerm}"</h4>
+                    <button class="close-popup">&times;</button>
+                </div>
+                <div class="popup-body">
+                    ${results.map((result, index) => `
+                        <div class="result-item" data-index="${index}">
+                            <div class="result-type ${result.type}">
+                                <i class="fas ${getIconForType(result.type)}"></i>
+                            </div>
+                            <div class="result-info">
+                                <div class="result-name">
+                                    ${result.properties.name || 
+                                      result.properties.identifier || 
+                                      result.properties.iata || 
+                                      'Unknown'}
+                                </div>
+                                <div class="result-details">
+                                    ${result.properties.iata ? `<span>IATA: ${result.properties.iata}</span>` : ''}
+                                    ${result.properties.icao ? `<span>ICAO: ${result.properties.icao}</span>` : ''}
+                                    ${result.properties.type ? `<span>Type: ${result.properties.type}</span>` : ''}
+                                    ${result.properties.city ? `<span>City: ${result.properties.city}</span>` : ''}
+                                </div>
+                            </div>
+                            <button class="zoom-to-btn" data-index="${index}">
+                                <i class="fas fa-map-marker-alt"></i>
+                            </button>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            
+            // Style the popup
+            popup.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: white;
+                border-radius: 10px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                z-index: 10004;
+                width: 400px;
+                max-height: 500px;
+                overflow: hidden;
+                border: 2px solid #1a73e8;
+            `;
+            
+            document.body.appendChild(popup);
+            
+            // Add close button event
+            popup.querySelector('.close-popup').addEventListener('click', () => {
+                popup.remove();
+            });
+            
+            // Add zoom buttons events
+            popup.querySelectorAll('.zoom-to-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const index = parseInt(this.getAttribute('data-index'));
+                    const result = results[index];
+                    zoomToResult(result);
+                    popup.remove();
+                });
+            });
+            
+            // Close on background click
+            setTimeout(() => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.5);
+                    z-index: 10003;
+                `;
+                document.body.appendChild(overlay);
+                
+                overlay.addEventListener('click', () => {
+                    popup.remove();
+                    overlay.remove();
+                });
+            }, 10);
+            
+            // Auto-close after 15 seconds
+            setTimeout(() => {
+                if (popup.parentNode) {
+                    popup.remove();
+                }
+            }, 15000);
+        }
+
+        function getIconForType(type) {
+            switch(type) {
+                case 'airport': return 'fa-plane-departure';
+                case 'waypoint': return 'fa-map-marker-alt';
+                case 'fir': return 'fa-border-all';
+                default: return 'fa-map-marker';
+            }
+        }
+
         // ==================== INITIALIZATION ====================
+        initLayerControls();
+        activateTool('select');
+        updateModeUI();
+        setupRouteChangeMonitor();
+        updateDeleteButtonVisibility();
+        
+        // Load airports into select boxes
         fetch('/api/airports/')
             .then(response => response.json())
             .then(data => {
@@ -2427,491 +3213,10 @@ document.getElementById('saveRouteModal').addEventListener('click', function(e) 
                 console.error('❌ Error loading airports:', error);
                 showStatus('Error loading airports data', 'error');
             });
-// ==================== SIMPLE GLOBAL SEARCH ====================
-document.getElementById('searchButton').addEventListener('click', performSimpleSearch);
-document.getElementById('globalSearch').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') performSimpleSearch();
-});
-
-async function performSimpleSearch() {
-    const searchTerm = document.getElementById('globalSearch').value.trim().toUpperCase();
-    
-    if (!searchTerm) {
-        showStatus('❌ Please enter search term', 'error');
-        return;
-    }
-    
-    console.log('🔍 Searching for:', searchTerm);
-    showStatus(`Searching for "${searchTerm}"...`, 'info');
-    
-    // Reset all highlights
-    resetAllHighlights();
-    
-    try {
-        let foundItems = [];
-        let activatedLayer = null;
         
-        // ترتیب اولویت جستجو
-        // 1. اول فرودگاه‌ها
-        const airportResults = searchInAirports(searchTerm);
-        if (airportResults.length > 0) {
-            foundItems = airportResults;
-            activatedLayer = 'airports';
-        }
-        
-        // 2. اگر فرودگاه پیدا نشد، waypoints
-        else {
-            const waypointResults = searchInWaypoints(searchTerm);
-            if (waypointResults.length > 0) {
-                foundItems = waypointResults;
-                activatedLayer = 'waypoints';
-            }
-            
-            // 3. اگر waypoint هم پیدا نشد، FIRها
-            else {
-                const firResults = searchInFIRs(searchTerm);
-                if (firResults.length > 0) {
-                    foundItems = firResults;
-                    activatedLayer = 'firs';
-                }
-            }
-        }
-        
-        // نمایش نتایج
-        if (foundItems.length > 0) {
-            displaySearchResults(foundItems, searchTerm);
-            
-            // فقط لایه مربوطه را روشن کن، بقیه را خاموش کن
-            setOnlyLayerActive(activatedLayer);
-            
-        } else {
-            showStatus(`❌ No results found for "${searchTerm}"`, 'error');
-        }
-        
-    } catch (error) {
-        console.error('Search error:', error);
-        showStatus('❌ Search error occurred', 'error');
-    }
-}
-
-// فقط یک لایه را فعال کن، بقیه را غیرفعال
-function setOnlyLayerActive(layerName) {
-    // همه لایه‌ها را اول خاموش کن
-    airportLayer.setVisible(false);
-    waypointLayer.setVisible(false);
-    firLayer.setVisible(false);
-    
-    document.getElementById('toggleAirports').checked = false;
-    document.getElementById('toggleWaypoints').checked = false;
-    document.getElementById('toggleFIR').checked = false;
-    
-    sessionStorage.setItem('toggleAirports', 'false');
-    sessionStorage.setItem('toggleWaypoints', 'false');
-    sessionStorage.setItem('toggleFIR', 'false');
-    
-    // حالا فقط لایه مورد نظر را روشن کن
-    if (layerName === 'airports') {
-        airportLayer.setVisible(true);
-        document.getElementById('toggleAirports').checked = true;
-        sessionStorage.setItem('toggleAirports', 'true');
-        showStatus('Showing Airports only', 'info');
-    }
-    else if (layerName === 'waypoints') {
-        waypointLayer.setVisible(true);
-        document.getElementById('toggleWaypoints').checked = true;
-        sessionStorage.setItem('toggleWaypoints', 'true');
-        showStatus('Showing Waypoints only', 'info');
-    }
-    else if (layerName === 'firs') {
-        firLayer.setVisible(true);
-        document.getElementById('toggleFIR').checked = true;
-        sessionStorage.setItem('toggleFIR', 'true');
-        showStatus('Showing FIR Regions only', 'info');
-    }
-}
-
-// توابع جستجو (بدون تغییر در بخش روشن کردن لایه)
-function searchInAirports(searchTerm) {
-    const results = [];
-    const source = airportLayer.getSource();
-    const features = source.getFeatures();
-    
-    for (const feature of features) {
-        const props = feature.getProperties();
-        const name = props.name || '';
-        const iata = props.iata || '';
-        const icao = props.icao || '';
-        const identifier = props.identifier || '';
-        const city = props.city || '';
-        const country = props.country || '';
-        
-        if (iata === searchTerm || 
-            icao === searchTerm || 
-            identifier === searchTerm ||
-            name.toUpperCase().includes(searchTerm) ||
-            city.toUpperCase().includes(searchTerm) ||
-            country.toUpperCase().includes(searchTerm)) {
-            
-            highlightFeature(feature, airportLayer, '#1a73e8');
-            
-            results.push({
-                type: 'airport',
-                feature: feature,
-                properties: props,
-                coordinates: feature.getGeometry().getCoordinates()
-            });
-            
-            if (iata === searchTerm || icao === searchTerm || identifier === searchTerm) {
-                break;
-            }
-        }
-    }
-    
-    return results;
-}
-
-function searchInWaypoints(searchTerm) {
-    const results = [];
-    const source = waypointLayer.getSource();
-    const features = source.getFeatures();
-    
-    for (const feature of features) {
-        const props = feature.getProperties();
-        const identifier = props.identifier || '';
-        const name = props.name || '';
-        const type = props.type || '';
-        const country = props.country || '';
-        
-        if (identifier === searchTerm || 
-            name.toUpperCase().includes(searchTerm) ||
-            (type && type.toUpperCase().includes(searchTerm))) {
-            
-            highlightFeature(feature, waypointLayer, '#FF6B35');
-            
-            results.push({
-                type: 'waypoint',
-                feature: feature,
-                properties: props,
-                coordinates: feature.getGeometry().getCoordinates()
-            });
-            
-            if (identifier === searchTerm) {
-                break;
-            }
-        }
-    }
-    
-    return results;
-}
-
-function searchInFIRs(searchTerm) {
-    const results = [];
-    const source = firLayer.getSource();
-    const features = source.getFeatures();
-    
-    for (const feature of features) {
-        const props = feature.getProperties();
-        const identifier = props.identifier || '';
-        const name = props.name || '';
-        const country = props.country || '';
-        const icaoRegion = props.icao_region || '';
-        
-        if (identifier === searchTerm || 
-            name.toUpperCase().includes(searchTerm) ||
-            country.toUpperCase().includes(searchTerm) ||
-            icaoRegion === searchTerm) {
-            
-            highlightFeature(feature, firLayer, '#ea4335');
-            
-            results.push({
-                type: 'fir',
-                feature: feature,
-                properties: props,
-                coordinates: feature.getGeometry().getExtent()
-            });
-            
-            if (identifier === searchTerm) {
-                break;
-            }
-        }
-    }
-    
-    return results;
-}
-
-function highlightFeature(feature, layer, color) {
-    const originalStyle = layer.getStyle();
-    
-    layer.setStyle(function(layerFeature) {
-        if (layerFeature === feature) {
-            // Highlight style
-            if (layer === firLayer) {
-                return new ol.style.Style({
-                    stroke: new ol.style.Stroke({
-                        color: '#ff0000',
-                        width: 4,
-                        lineDash: [5, 5]
-                    }),
-                    fill: new ol.style.Fill({
-                        color: 'rgba(255, 0, 0, 0.2)'
-                    }),
-                    text: new ol.style.Text({
-                        text: feature.get('identifier') || 'FIR',
-                        fill: new ol.style.Fill({color: '#ff0000'}),
-                        stroke: new ol.style.Stroke({color: 'white', width: 3}),
-                        offsetY: -20,
-                        font: 'bold 14px Arial'
-                    })
-                });
-            } else {
-                return new ol.style.Style({
-                    image: new ol.style.Circle({
-                        radius: layer === airportLayer ? 10 : 8,
-                        fill: new ol.style.Fill({color: '#ff0000'}),
-                        stroke: new ol.style.Stroke({
-                            color: 'white',
-                            width: 3
-                        })
-                    }),
-                    text: layer === airportLayer ? new ol.style.Text({
-                        text: feature.get('iata') || feature.get('icao') || 'AIRPORT',
-                        offsetY: -15,
-                        fill: new ol.style.Fill({color: '#ff0000'}),
-                        stroke: new ol.style.Stroke({color: 'white', width: 3}),
-                        font: 'bold 12px Arial'
-                    }) : undefined
-                });
-            }
-        }
-        
-        // Return original style for other features
-        if (typeof originalStyle === 'function') {
-            return originalStyle(layerFeature);
-        }
-        return originalStyle;
-    });
-    
-    // Auto-remove highlight after 10 seconds
-    setTimeout(() => {
-        layer.setStyle(originalStyle);
-    }, 10000);
-}
-
-function resetAllHighlights() {
-    // Reset airport layer
-    airportLayer.setStyle(new ol.style.Style({
-        image: new ol.style.Circle({
-            radius: 6,
-            fill: new ol.style.Fill({color: '#1a73e8'}),
-            stroke: new ol.style.Stroke({color: 'white', width: 2})
-        })
-    }));
-    
-    // Reset waypoint layer
-    waypointLayer.setStyle(function(feature) {
-        const type = feature.get('type');
-        let color, icon;
-        
-        switch(type) {
-            case 'VOR': color = '#FF6B35'; icon = 'V'; break;
-            case 'NDB': color = '#34a853'; icon = 'N'; break;
-            case 'AIRPORT': color = '#1a73e8'; icon = 'A'; break;
-            default: color = '#5f6368'; icon = 'W';
-        }
-        
-        return new ol.style.Style({
-            image: new ol.style.Circle({
-                radius: 5,
-                fill: new ol.style.Fill({color: color}),
-                stroke: new ol.style.Stroke({color: 'white', width: 1.5})
-            }),
-            text: new ol.style.Text({
-                text: feature.get('identifier') + ' ' + icon,
-                offsetY: -10,
-                fill: new ol.style.Fill({color: color}),
-                stroke: new ol.style.Stroke({color: 'white', width: 2}),
-                font: 'bold 11px Arial'
-            })
-        });
-    });
-    
-    // Reset FIR layer
-    firLayer.setStyle(function(feature) {
-        const identifier = feature.get('identifier');
-        
-        return new ol.style.Style({
-            stroke: new ol.style.Stroke({
-                color: 'rgba(234, 67, 53, 0.7)',
-                width: 2,
-                lineDash: [5, 5]
-            }),
-            fill: new ol.style.Fill({
-                color: 'rgba(234, 67, 53, 0.1)'
-            }),
-            text: new ol.style.Text({
-                text: identifier,
-                fill: new ol.style.Fill({color: '#ea4335'}),
-                stroke: new ol.style.Stroke({color: 'white', width: 2}),
-                offsetY: -20,
-                font: 'bold 12px Arial',
-                overflow: true
-            })
-        });
-    });
-}
-
-function displaySearchResults(results, searchTerm) {
-    if (results.length === 1) {
-        // Single result - zoom to it
-        const result = results[0];
-        zoomToResult(result);
-        
-        // Show status
-        const name = result.properties.name || 
-                    result.properties.identifier || 
-                    result.properties.iata || 
-                    'Location';
-        showStatus(`✅ Found: ${name}`, 'success');
-        
-    } else {
-        // Multiple results - show simple popup
-        showResultsPopup(results, searchTerm);
-    }
-}
-
-function zoomToResult(result) {
-    if (!result || !result.coordinates) return;
-    
-    if (result.type === 'fir') {
-        // Zoom to FIR extent
-        map.getView().fit(result.coordinates, {
-            padding: [50, 50, 50, 50],
-            duration: 1000,
-            maxZoom: 8
-        });
-    } else {
-        // Zoom to point
-        map.getView().animate({
-            center: result.coordinates,
-            zoom: result.type === 'airport' ? 12 : 10,
-            duration: 1000
-        });
-    }
-}
-
-function showResultsPopup(results, searchTerm) {
-    // Create a simple popup
-    const popup = document.createElement('div');
-    popup.className = 'search-results-popup';
-    popup.innerHTML = `
-        <div class="popup-header">
-            <h4><i class="fas fa-search"></i> ${results.length} results for "${searchTerm}"</h4>
-            <button class="close-popup">&times;</button>
-        </div>
-        <div class="popup-body">
-            ${results.map((result, index) => `
-                <div class="result-item" data-index="${index}">
-                    <div class="result-type ${result.type}">
-                        <i class="fas ${getIconForType(result.type)}"></i>
-                    </div>
-                    <div class="result-info">
-                        <div class="result-name">
-                            ${result.properties.name || 
-                              result.properties.identifier || 
-                              result.properties.iata || 
-                              'Unknown'}
-                        </div>
-                        <div class="result-details">
-                            ${result.properties.iata ? `<span>IATA: ${result.properties.iata}</span>` : ''}
-                            ${result.properties.icao ? `<span>ICAO: ${result.properties.icao}</span>` : ''}
-                            ${result.properties.type ? `<span>Type: ${result.properties.type}</span>` : ''}
-                            ${result.properties.city ? `<span>City: ${result.properties.city}</span>` : ''}
-                        </div>
-                    </div>
-                    <button class="zoom-to-btn" data-index="${index}">
-                        <i class="fas fa-map-marker-alt"></i>
-                    </button>
-                </div>
-            `).join('')}
-        </div>
-    `;
-    
-    // Style the popup
-    popup.style.cssText = `
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        z-index: 10004;
-        width: 400px;
-        max-height: 500px;
-        overflow: hidden;
-        border: 2px solid #1a73e8;
-    `;
-    
-    document.body.appendChild(popup);
-    
-    // Add close button event
-    popup.querySelector('.close-popup').addEventListener('click', () => {
-        popup.remove();
-    });
-    
-    // Add zoom buttons events
-    popup.querySelectorAll('.zoom-to-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const index = parseInt(this.getAttribute('data-index'));
-            const result = results[index];
-            zoomToResult(result);
-            popup.remove();
-        });
-    });
-    
-    // Close on background click
-    setTimeout(() => {
-        const overlay = document.createElement('div');
-        overlay.style.cssText = `
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 10003;
-        `;
-        document.body.appendChild(overlay);
-        
-        overlay.addEventListener('click', () => {
-            popup.remove();
-            overlay.remove();
-        });
-    }, 10);
-    
-    // Auto-close after 15 seconds
-    setTimeout(() => {
-        if (popup.parentNode) {
-            popup.remove();
-        }
-    }, 15000);
-}
-
-function getIconForType(type) {
-    switch(type) {
-        case 'airport': return 'fa-plane-departure';
-        case 'waypoint': return 'fa-map-marker-alt';
-        case 'fir': return 'fa-border-all';
-        default: return 'fa-map-marker';
-    }
-}
-        // ==================== FINAL INIT ====================
-        initLayerControls();
-        activateTool('select');
-        updateModeUI();
-        
-        console.log('✅ FlightFuel Application Fully Initialized with Simple Edit Tools');
+        console.log('✅ FlightFuel Application Fully Initialized with Delete Functionality');
         showStatus('FlightFuel ready!', 'success');
+        
     </script>
 </body>
 </html>

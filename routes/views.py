@@ -26,7 +26,8 @@ from django.utils import timezone
 
 def get_icao_code(code, return_original_if_not_found=True):
     """
-    Smart conversion of airport code to ICAO - final version
+    Smart conversion of airport code to ICAO
+    Converts IATA (3-letter) to ICAO (4-letter) when possible
     """
     if not code:
         return None
@@ -35,7 +36,7 @@ def get_icao_code(code, return_original_if_not_found=True):
     
     # 1. If 4 letters and alphabetic: likely ICAO
     if len(code) == 4 and code.isalpha():
-        # Check in airports
+        # Check in airports database
         airport = Airport.objects.filter(
             Q(icao_code=code) | Q(iata_code=code)
         ).first()
@@ -45,7 +46,7 @@ def get_icao_code(code, return_original_if_not_found=True):
     
     # 2. If 3 letters and alphabetic: IATA
     elif len(code) == 3 and code.isalpha():
-        # Search in airports
+        # Search in airports database
         airport = Airport.objects.filter(iata_code=code).first()
         if airport and airport.icao_code:
             return airport.icao_code
@@ -61,7 +62,7 @@ def get_icao_code(code, return_original_if_not_found=True):
 
 def validate_airport_code(code):
     """
-    Validate airport code and return information
+    Validate airport code and return detailed information
     """
     if not code:
         return {'valid': False, 'error': 'Airport code is empty'}
@@ -108,8 +109,12 @@ def validate_airport_code(code):
     }
 
 def parse_route_text(route_text):
-    """Parse route text - support IATA and ICAO"""
+    """
+    Parse route text string into structured route data
+    Supports IATA, ICAO, waypoints, airways, SID/STAR
+    """
     try:
+        # Remove DCT (Direct) and clean parts
         parts = [p for p in route_text.split() if p not in ['DCT']]
         
         if len(parts) < 2:
@@ -121,7 +126,7 @@ def parse_route_text(route_text):
         waypoints = []
         coordinates = []
         
-        # Add coordinates for each part
+        # Process each part of the route
         for part in parts:
             # Detect code type (IATA or ICAO)
             is_airport = False
@@ -153,7 +158,7 @@ def parse_route_text(route_text):
                 waypoints.append(part)
                 continue
                 
-            # If airway - ignore
+            # If airway - ignore in coordinates but track
             if re.match(r'^[ABGRULMNZW]\d+', part):
                 continue
                 
@@ -165,16 +170,16 @@ def parse_route_text(route_text):
         if len(coordinates) < 2:
             return None
             
-        # Calculate distance
+        # Calculate total distance
         total_distance = calculate_route_distance(coordinates)
         
-        # ======== FIX: تبدیل departure و arrival به ICAO ========
+        # Convert departure and arrival to ICAO
         departure_icao = get_icao_code(departure)
         arrival_icao = get_icao_code(arrival)
         
         return {
-            'departure': departure_icao,  # استفاده از ICAO
-            'arrival': arrival_icao,      # استفاده از ICAO
+            'departure': departure_icao,
+            'arrival': arrival_icao,
             'waypoints': waypoints,
             'coordinates': coordinates,
             'total_distance': total_distance
@@ -185,7 +190,9 @@ def parse_route_text(route_text):
         return None
 
 def calculate_route_distance(coordinates):
-    """Calculate total route distance"""
+    """
+    Calculate total route distance in nautical miles
+    """
     total_distance = 0
     for i in range(len(coordinates) - 1):
         coord1 = coordinates[i]
@@ -194,7 +201,9 @@ def calculate_route_distance(coordinates):
     return total_distance
 
 def calculate_distance_nm(coord1, coord2):
-    """Calculate distance between two points in nautical miles"""
+    """
+    Calculate distance between two points in nautical miles using Haversine formula
+    """
     lon1, lat1 = coord1
     lon2, lat2 = coord2
     
@@ -206,13 +215,15 @@ def calculate_distance_nm(coord1, coord2):
          math.cos(lat1 * math.pi / 180) * math.cos(lat2 * math.pi / 180) *
          math.sin(dLon/2) * math.sin(dLon/2))
     
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))  # FIXED: math.sqrt not Math.sqrt
     return R * c
 
 def calculate_firs_for_route(coordinates):
     """
-    Calculate which FIRs the route passes through
-    Returns: (count, list_of_firs)
+    Calculate which Flight Information Regions (FIRs) the route passes through
+    
+    Returns:
+        tuple: (count, list_of_firs)
     """
     try:
         if not coordinates or len(coordinates) < 2:
@@ -228,7 +239,7 @@ def calculate_firs_for_route(coordinates):
         
         fir_count = intersecting_firs.count()
         
-        # Prepare FIR list
+        # Prepare FIR list with details
         fir_list = []
         for fir in intersecting_firs:
             fir_list.append({
@@ -248,6 +259,9 @@ def calculate_firs_for_route(coordinates):
 # ==================== DRF ViewSets ====================
 
 class WaypointViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for Navigation Waypoints
+    """
     queryset = Waypoint.objects.all()
     serializer_class = WaypointSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -257,6 +271,9 @@ class WaypointViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['GET'])
     def by_type(self, request):
+        """
+        Filter waypoints by type (VOR, NDB, FIX, etc.)
+        """
         wp_type = request.query_params.get('type')
         if wp_type:
             waypoints = Waypoint.objects.filter(type=wp_type)
@@ -266,39 +283,61 @@ class WaypointViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 class AirwayViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for Airways (A, B, G, R routes)
+    """
     queryset = Airway.objects.all()
     serializer_class = AirwaySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     
     @action(detail=True, methods=['GET'])
     def segments(self, request, pk=None):
+        """
+        Get all segments for a specific airway
+        """
         airway = self.get_object()
         segments = airway.segments.all()
         serializer = AirwaySegmentSerializer(segments, many=True)
         return Response(serializer.data)
 
 class AirwaySegmentViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for Airway Segments
+    """
     queryset = AirwaySegment.objects.all()
     serializer_class = AirwaySegmentSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
 class RouteViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for Flight Routes
+    Provides full CRUD operations for routes
+    """
     queryset = Route.objects.all()
     serializer_class = RouteSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     
     def create(self, request, *args, **kwargs):
+        """
+        Create new route with user assignment
+        """
         if request.user.is_authenticated:
             request.data['created_by'] = request.user.id
         return super().create(request, *args, **kwargs)
     
     def update(self, request, *args, **kwargs):
+        """
+        Update existing route with user assignment
+        """
         if request.user.is_authenticated:
             request.data['updated_by'] = request.user.id
         return super().update(request, *args, **kwargs)
     
     @action(detail=False, methods=['POST'])
     def calculate(self, request):
+        """
+        Calculate route options between two points
+        """
         try:
             departure = request.data.get('departure')
             arrival = request.data.get('arrival')
@@ -321,6 +360,9 @@ class RouteViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['GET'])
     def map_data(self, request):
+        """
+        Get map data including waypoints and airways for frontend display
+        """
         waypoints = Waypoint.objects.filter(is_active=True)[:500]
         airways = Airway.objects.all()
         segments = AirwaySegment.objects.select_related('airway', 'from_waypoint', 'to_waypoint').all()
@@ -347,7 +389,11 @@ class RouteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['GET'])
     def search(self, request):
         """
-        Search saved routes based on origin and destination
+        Search saved routes based on origin and destination airport codes
+        
+        Query parameters:
+        - origin: Departure airport code (IATA or ICAO)
+        - destination: Arrival airport code (IATA or ICAO)
         """
         try:
             origin = request.query_params.get('origin', '').strip().upper()
@@ -435,7 +481,10 @@ class RouteViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['GET'])
     def search_by_airport(self, request):
         """
-        Search all routes related to an airport
+        Search all routes related to a specific airport
+        
+        Query parameters:
+        - airport: Airport code (IATA or ICAO)
         """
         try:
             airport_code = request.query_params.get('airport', '').strip().upper()
@@ -506,7 +555,12 @@ class RouteViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['GET'])
     def search_airport(self, request):
-        """Search airport by IATA or ICAO"""
+        """
+        Search airport information by IATA or ICAO code
+        
+        Query parameters:
+        - code: Airport code (IATA or ICAO)
+        """
         code = request.query_params.get('code', '').strip().upper()
         
         if not code:
@@ -533,7 +587,9 @@ class RouteViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_404_NOT_FOUND)
     
     def calculate_routes(self, departure, arrival):
-        """Calculate different routes"""
+        """
+        Calculate different route options between two points
+        """
         result = {
             'departure': departure,
             'arrival': arrival,
@@ -547,7 +603,9 @@ class RouteViewSet(viewsets.ModelViewSet):
         return result
     
     def calculate_direct_route(self, departure, arrival):
-        """Calculate direct route"""
+        """
+        Calculate direct (great circle) route between two points
+        """
         try:
             dep_wp = Waypoint.objects.get(identifier=departure)
             arr_wp = Waypoint.objects.get(identifier=arrival)
@@ -565,7 +623,9 @@ class RouteViewSet(viewsets.ModelViewSet):
             return {'error': 'Waypoint not found'}
     
     def calculate_airway_route(self, departure, arrival):
-        """Calculate route using airways"""
+        """
+        Calculate route using published airways (not yet implemented)
+        """
         return {
             'type': 'AIRWAY',
             'waypoints': [],
@@ -574,11 +634,14 @@ class RouteViewSet(viewsets.ModelViewSet):
         }
     
     def calculate_via_waypoints(self, departure, arrival):
-        """Calculate route via intermediate points"""
+        """
+        Calculate route via intermediate waypoints
+        """
         try:
             dep_wp = Waypoint.objects.get(identifier=departure)
             arr_wp = Waypoint.objects.get(identifier=arrival)
             
+            # Find waypoints near departure and arrival
             waypoints = Waypoint.objects.filter(
                 Q(location__dwithin=(dep_wp.location, 2.0)) |
                 Q(location__dwithin=(arr_wp.location, 2.0))
@@ -600,7 +663,9 @@ class RouteViewSet(viewsets.ModelViewSet):
             return {'error': 'Waypoint not found'}
     
     def calculate_distance_for_waypoints(self, waypoints):
-        """Calculate distance for list of waypoints"""
+        """
+        Calculate total distance for a list of waypoints
+        """
         total_nm = 0
         for i in range(len(waypoints) - 1):
             try:
@@ -615,6 +680,9 @@ class RouteViewSet(viewsets.ModelViewSet):
         return round(total_nm, 2)
 
 class FlightInformationRegionViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for Flight Information Regions (FIRs)
+    """
     queryset = FlightInformationRegion.objects.all()
     serializer_class = FlightInformationRegionSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
@@ -625,6 +693,9 @@ class FlightInformationRegionViewSet(viewsets.ModelViewSet):
 # ==================== UTILITY APIs ====================
 
 class AirportGeoJSON(APIView):
+    """
+    API endpoint to get airports as GeoJSON for map display
+    """
     def get(self, request):
         airports = Airport.objects.all()
         
@@ -653,6 +724,9 @@ class AirportGeoJSON(APIView):
         return JsonResponse(geojson)
 
 class WaypointGeoJSON(APIView):
+    """
+    API endpoint to get navigation waypoints as GeoJSON for map display
+    """
     def get(self, request):
         waypoints = Waypoint.objects.all()
         
@@ -681,6 +755,9 @@ class WaypointGeoJSON(APIView):
         return JsonResponse(geojson)
 
 class FIRGeoJSON(APIView):
+    """
+    API endpoint to get Flight Information Regions as GeoJSON for map display
+    """
     def get(self, request):
         regions = FlightInformationRegion.objects.filter(is_active=True)
         
@@ -743,6 +820,10 @@ class FIRGeoJSON(APIView):
         return JsonResponse(geojson, json_dumps_params={'ensure_ascii': False})
 
 class CalculateRoute(APIView):
+    """
+    API endpoint to calculate optimal route between two points
+    (Uses AirwayRouter for advanced routing)
+    """
     def post(self, request):
         try:
             departure = request.data.get('departure')
@@ -763,14 +844,216 @@ class CalculateRoute(APIView):
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
 
-class SaveRouteAPI(APIView):
+# ==================== ENHANCED SAVE ROUTE API ====================
+class EnhancedSaveRouteAPI(APIView):
+    """
+    Enhanced route saving with proper Overwrite behavior
+    - Overwrite: Keeps original name, no versioning
+    - Save As: User provides custom name, no auto-versioning
+    """
     permission_classes = [AllowAny]
     
     def post(self, request):
         try:
-            print("📦 SaveRouteAPI: Receiving data...")
+            print("🚀 EnhancedSaveRouteAPI: Starting...")
             data = request.data
             
+            # Validate required fields
+            required_fields = ['departure', 'arrival', 'coordinates']
+            for field in required_fields:
+                if field not in data:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Missing required field: {field}'
+                    }, status=400)
+            
+            # Parse coordinates
+            coords = data['coordinates']
+            line_coords = []
+            for coord in coords:
+                if isinstance(coord, list) and len(coord) >= 2:
+                    try:
+                        line_coords.append((float(coord[0]), float(coord[1])))
+                    except (ValueError, TypeError):
+                        continue
+            
+            if len(line_coords) < 2:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Minimum 2 points required'
+                }, status=400)
+            
+            # Convert to ICAO
+            departure_icao = get_icao_code(data.get('departure', ''))
+            arrival_icao = get_icao_code(data.get('arrival', ''))
+            
+            if not departure_icao or not arrival_icao:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Invalid airport codes'
+                }, status=400)
+            
+            # Get route name from user
+            route_name = data.get('name', '').strip()
+            
+            # Get action and decision from frontend
+            action = data.get('action', 'auto')  # 'auto', 'overwrite', 'save_as'
+            decision = data.get('decision')      # From popup: 'overwrite', 'save_as_new', 'cancel'
+            route_id = data.get('route_id')      # For overwrite
+            
+            # ======== DECISION LOGIC ========
+            
+            # If decision from popup is 'cancel'
+            if decision == 'cancel':
+                return JsonResponse({
+                    'status': 'cancelled',
+                    'message': 'Save operation cancelled by user'
+                })
+            
+            # Check for existing routes with same departure/arrival
+            existing_routes = Route.objects.filter(
+                departure=departure_icao,
+                arrival=arrival_icao
+            ).order_by('-created_at')
+            
+            # ======== ACTION: OVERWRITE ========
+            if action == 'overwrite' and route_id:
+                try:
+                    route = Route.objects.get(id=route_id)
+                    
+                    # ✅ CRITICAL: DO NOT CHANGE ROUTE NAME
+                    original_name = route.name
+                    
+                    # Update route data but keep original name
+                    route.departure = departure_icao
+                    route.arrival = arrival_icao
+                    route.waypoints = data.get('waypoints', [])
+                    route.coordinates = LineString(line_coords, srid=4326)
+                    route.total_distance = data.get('total_distance', 0)
+                    route.flight_time = data.get('flight_time', '')
+                    route.description = data.get('description', route.description)
+                    
+                    # Update user
+                    if User.objects.exists():
+                        route.updated_by = User.objects.first()
+                    
+                    route.save()
+                    
+                    return JsonResponse({
+                        'status': 'success', 
+                        'route_id': route.id,
+                        'route_name': original_name,
+                        'original_name_preserved': True,
+                        'message': f'Route "{original_name}" overwritten successfully',
+                        'action': 'overwrite'
+                    })
+                    
+                except Route.DoesNotExist:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Route with ID {route_id} not found'
+                    }, status=404)
+            
+            # ======== ACTION: SAVE AS NEW ========
+            elif action == 'save_as' or decision == 'save_as_new':
+                # ✅ NO AUTO VERSIONING - User provides custom name
+                if not route_name:
+                    route_name = f"{departure_icao}-{arrival_icao}"
+                
+                # Create new route with user-provided name
+                route = Route.objects.create(
+                    name=route_name,
+                    departure=departure_icao,
+                    arrival=arrival_icao,
+                    waypoints=data.get('waypoints', []),
+                    coordinates=LineString(line_coords, srid=4326),
+                    total_distance=data.get('total_distance', 0),
+                    flight_time=data.get('flight_time', ''),
+                    description=data.get('description', ''),
+                    created_by=User.objects.first() if User.objects.exists() else None
+                )
+                
+                return JsonResponse({
+                    'status': 'success', 
+                    'route_id': route.id,
+                    'route_name': route.name,
+                    'message': f'Route "{route.name}" saved as new',
+                    'action': 'save_as_new'
+                })
+            
+            # ======== AUTO DETECTION (for conflict) ========
+            elif existing_routes.exists():
+                # Conflict detected - SIMPLIFIED OPTIONS
+                existing_route = existing_routes.first()
+                
+                return JsonResponse({
+                    'status': 'conflict',
+                    'message': f'Route "{existing_route.name}" already exists',
+                    'existing_route': {
+                        'id': existing_route.id,
+                        'name': existing_route.name,
+                        'departure': existing_route.departure,
+                        'arrival': existing_route.arrival,
+                        'created_at': existing_route.created_at.strftime('%Y-%m-%d %H:%M'),
+                        'created_by': existing_route.created_by.username if existing_route.created_by else 'System'
+                    },
+                    'options': {
+                        'overwrite': f'Overwrite: "{existing_route.name}"',
+                        'cancel': 'Cancel'
+                    }
+                }, status=409)
+            
+            # ======== CREATE NEW ROUTE (no conflict) ========
+            else:
+                # No conflict - create new route
+                if not route_name:
+                    route_name = f"{departure_icao}-{arrival_icao}"
+                
+                route = Route.objects.create(
+                    name=route_name,
+                    departure=departure_icao,
+                    arrival=arrival_icao,
+                    waypoints=data.get('waypoints', []),
+                    coordinates=LineString(line_coords, srid=4326),
+                    total_distance=data.get('total_distance', 0),
+                    flight_time=data.get('flight_time', ''),
+                    description=data.get('description', ''),
+                    created_by=User.objects.first() if User.objects.exists() else None
+                )
+                
+                return JsonResponse({
+                    'status': 'success', 
+                    'route_id': route.id,
+                    'route_name': route.name,
+                    'message': 'New route created successfully',
+                    'action': 'created_new'
+                })
+                
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"❌ EnhancedSaveRouteAPI Error: {str(e)}")
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e),
+                'details': error_details[:300]
+            }, status=400)
+# ==================== SIMPLE SAVE ROUTE API ====================
+class SaveRouteAPI(APIView):
+    """
+    Simple route saving API
+    - Overwrite: Keeps original name
+    - Create: Uses simple name format if not provided
+    - NO AUTO VERSIONING
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        try:
+            print("📦 SaveRouteAPI: Receiving route data...")
+            data = request.data
+            
+            # Validate required fields
             required_fields = ['departure', 'arrival', 'coordinates']
             for field in required_fields:
                 if field not in data:
@@ -779,8 +1062,8 @@ class SaveRouteAPI(APIView):
                         'message': f'Field {field} is missing'
                     }, status=400)
             
+            # Parse coordinates
             coords = data['coordinates']
-            
             line_coords = []
             for coord in coords:
                 if isinstance(coord, list) and len(coord) >= 2:
@@ -795,7 +1078,7 @@ class SaveRouteAPI(APIView):
                     'message': 'Minimum 2 points required to create a route'
                 }, status=400)
             
-            # ======== FIX 1: تبدیل به ICAO قبل از ذخیره ========
+            # Convert airport codes to ICAO
             departure_icao = get_icao_code(data.get('departure', ''))
             arrival_icao = get_icao_code(data.get('arrival', ''))
             
@@ -805,51 +1088,93 @@ class SaveRouteAPI(APIView):
                     'message': 'Invalid airport codes'
                 }, status=400)
             
-            # ======== FIX: Get and validate route name ========
+            # Get route name
             route_name = data.get('name', '').strip()
             
-            # If name is empty, starts with "Route" or contains "Route", use simple format
-            if not route_name or 'Route' in route_name:
-                route_name = f"{departure_icao}-{arrival_icao}"  # استفاده از ICAO در نام
-                print(f"✅ Using simple route name: {route_name}")
-            # =================================================
+            # ======== Check action type ========
+            action = data.get('action', 'create')  # 'create' or 'overwrite'
+            route_id = data.get('route_id')  # For overwrite operations
             
-            existing_route = Route.objects.filter(
-                departure=departure_icao,
-                arrival=arrival_icao
-            ).order_by('-created_at').first()
+            if action == 'overwrite' and route_id:
+                # ✅ OVERWRITE EXISTING ROUTE - KEEP ORIGINAL NAME
+                try:
+                    route = Route.objects.get(id=route_id)
+                    original_name = route.name  # Save original name
+                    
+                    # Update route data but KEEP ORIGINAL NAME
+                    route.departure = departure_icao
+                    route.arrival = arrival_icao
+                    route.waypoints = data.get('waypoints', [])
+                    route.coordinates = LineString(line_coords, srid=4326)
+                    route.total_distance = data.get('total_distance', 0)
+                    route.flight_time = data.get('flight_time', '')
+                    route.description = data.get('description', route.description)
+                    
+                    # Update user info
+                    if User.objects.exists():
+                        route.updated_by = User.objects.first()
+                    
+                    route.save()
+                    
+                    return JsonResponse({
+                        'status': 'success', 
+                        'route_id': route.id,
+                        'route_name': original_name,  # Return ORIGINAL name
+                        'original_name_preserved': True,
+                        'message': f'Route "{original_name}" overwritten successfully',
+                        'action': 'overwritten'
+                    })
+                    
+                except Route.DoesNotExist:
+                    return JsonResponse({
+                        'status': 'error',
+                        'message': f'Route with ID {route_id} not found for overwrite'
+                    }, status=404)
             
-            if existing_route:
-                existing_route.name = route_name
-                existing_route.waypoints = data.get('waypoints', [])
-                existing_route.coordinates = LineString(line_coords, srid=4326)
-                existing_route.total_distance = data.get('total_distance', 0)
-                existing_route.flight_time = data.get('flight_time', '')
-                if User.objects.exists():
-                    existing_route.updated_by = User.objects.first()
-                existing_route.save()
-                
-                return JsonResponse({
-                    'status': 'success', 
-                    'route_id': existing_route.id,
-                    'message': 'Route updated successfully',
-                    'action': 'updated'
-                })
             else:
+                # CREATE NEW ROUTE
+                # Check if similar route exists
+                existing_routes = Route.objects.filter(
+                    departure=departure_icao,
+                    arrival=arrival_icao
+                ).order_by('-created_at')
+                
+                if existing_routes.exists():
+                    # Conflict detected
+                    existing_route = existing_routes.first()
+                    return JsonResponse({
+                        'status': 'conflict',
+                        'message': f'A route named "{existing_route.name}" already exists',
+                        'existing_route': {
+                            'id': existing_route.id,
+                            'name': existing_route.name,
+                            'departure': existing_route.departure,
+                            'arrival': existing_route.arrival,
+                            'created_at': existing_route.created_at.strftime('%Y-%m-%d %H:%M')
+                        },
+                        'suggestion': 'Send action: "overwrite" with route_id to overwrite, or use Save As with custom name'
+                    }, status=409)
+                
+                # Create new route
+                if not route_name:
+                    route_name = f"{departure_icao}-{arrival_icao}"
+                
                 route = Route.objects.create(
                     name=route_name,
-                    departure=departure_icao,  # ذخیره با ICAO
-                    arrival=arrival_icao,      # ذخیره با ICAO
+                    departure=departure_icao,
+                    arrival=arrival_icao,
                     waypoints=data.get('waypoints', []),
                     coordinates=LineString(line_coords, srid=4326),
                     total_distance=data.get('total_distance', 0),
                     flight_time=data.get('flight_time', ''),
+                    description=data.get('description', ''),
                     created_by=User.objects.first() if User.objects.exists() else None
                 )
                 
                 return JsonResponse({
                     'status': 'success', 
                     'route_id': route.id,
+                    'route_name': route.name,
                     'message': 'Route saved successfully',
                     'action': 'created'
                 })
@@ -857,19 +1182,26 @@ class SaveRouteAPI(APIView):
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
+            print(f"❌ SaveRouteAPI Error: {str(e)}")
             return JsonResponse({
                 'status': 'error',
                 'message': str(e),
                 'details': error_details[:300]
             }, status=400)
 
+# ==================== SAVE AS NEW ROUTE API ====================
 class SaveAsRouteAPI(APIView):
+    """
+    Save As API - Always creates new route with user-provided name
+    NO AUTO VERSIONING
+    """
     permission_classes = [AllowAny]
     
     def post(self, request):
         try:
             data = request.data
             
+            # Validate required fields
             required_fields = ['departure', 'arrival', 'coordinates']
             for field in required_fields:
                 if field not in data:
@@ -878,8 +1210,8 @@ class SaveAsRouteAPI(APIView):
                         'message': f'Field {field} is missing'
                     }, status=400)
             
+            # Parse coordinates
             coords = data['coordinates']
-            
             line_coords = []
             for coord in coords:
                 if isinstance(coord, list) and len(coord) >= 2:
@@ -894,7 +1226,7 @@ class SaveAsRouteAPI(APIView):
                     'message': 'Minimum 2 points required to create a route'
                 }, status=400)
             
-            # ======== FIX 1: تبدیل به ICAO قبل از ذخیره ========
+            # Convert to ICAO
             departure_icao = get_icao_code(data.get('departure', ''))
             arrival_icao = get_icao_code(data.get('arrival', ''))
             
@@ -904,35 +1236,26 @@ class SaveAsRouteAPI(APIView):
                     'message': 'Invalid airport codes'
                 }, status=400)
             
-            # ======== FIX: Get and validate route name ========
+            # Get custom name from user
             custom_name = data.get('name', '').strip()
             
-            # If custom name is empty, starts with "Route" or contains "Route", use simple format
-            if not custom_name or 'Route' in custom_name:
-                custom_name = f"{departure_icao}-{arrival_icao}"  # استفاده از ICAO
+            # If no custom name, use simple format
+            if not custom_name:
+                custom_name = f"{departure_icao}-{arrival_icao}"
             
-            version_count = Route.objects.filter(
-                departure=departure_icao,
-                arrival=arrival_icao
-            ).count()
+            # ✅ NO VERSIONING - Use user's name exactly as provided
+            route_name = custom_name
             
-            version = version_count + 1
-            
-            # Create route name with version
-            if custom_name:
-                route_name = f"{custom_name} v{version}"
-            else:
-                route_name = f"{departure_icao}-{arrival_icao} v{version}"
-            
+            # Create new route (always new, never overwrites)
             route = Route.objects.create(
                 name=route_name,
-                departure=departure_icao,  # ذخیره با ICAO
-                arrival=arrival_icao,      # ذخیره با ICAO
+                departure=departure_icao,
+                arrival=arrival_icao,
                 waypoints=data.get('waypoints', []),
                 coordinates=LineString(line_coords, srid=4326),
                 total_distance=data.get('total_distance', 0),
                 flight_time=data.get('flight_time', ''),
-                description=data.get('description', f'Version {version} - {timezone.now().strftime("%Y-%m-%d %H:%M")}'),
+                description=data.get('description', ''),
                 created_by=User.objects.first() if User.objects.exists() else None
             )
             
@@ -940,8 +1263,7 @@ class SaveAsRouteAPI(APIView):
                 'status': 'success', 
                 'route_id': route.id,
                 'route_name': route.name,
-                'version': version,
-                'message': f'Route saved as version {version}',
+                'message': f'Route saved as: "{route.name}"',
                 'action': 'saved_as'
             })
                 
@@ -954,7 +1276,11 @@ class SaveAsRouteAPI(APIView):
                 'details': error_details[:300]
             }, status=400)
 
+# ==================== GET ROUTES API ====================
 class GetRoutesAPI(APIView):
+    """
+    API endpoint to get all saved routes
+    """
     def get(self, request):
         try:
             routes = Route.objects.all().order_by('-created_at')
@@ -995,10 +1321,10 @@ class GetRoutesAPI(APIView):
                 'message': str(e)
             }, status=400)
 
-# ==================== ROUTE DETAIL API ====================
+# ==================== GET ROUTE DETAIL API ====================
 class GetRouteDetailAPI(APIView):
     """
-    API for getting complete details of a specific route (for Details button)
+    API for getting complete details of a specific route
     """
     permission_classes = [AllowAny]
     
@@ -1048,7 +1374,7 @@ class GetRouteDetailAPI(APIView):
                 'created_by': route.created_by.username if route.created_by else 'System',
                 'created_at': route.created_at.strftime('%Y-%m-%d %H:%M'),
                 'fir_count': fir_count,
-                'fir_list': fir_list,  # List of FIRs with details
+                'fir_list': fir_list,
             }
             
             return JsonResponse({
@@ -1065,30 +1391,228 @@ class GetRouteDetailAPI(APIView):
                 'status': 'error',
                 'message': f'Error getting route details: {str(e)}'
             }, status=500)
-
-class DeleteRouteAPI(APIView):
+# ==================== ADVANCED DELETE ROUTE API ====================
+class AdvancedDeleteRouteAPI(APIView):
+    """
+    Advanced delete API with hard/soft delete options
+    """
+    permission_classes = [AllowAny]
+    
     def delete(self, request, route_id):
         try:
-            route = Route.objects.get(id=route_id)
-            route.delete()
+            print(f"🗑️ AdvancedDeleteRouteAPI: Deleting route {route_id}")
+            
+            # Get delete options
+            delete_type = request.GET.get('type', 'soft')  # 'hard' or 'soft'
+            confirm = request.GET.get('confirm', 'false').lower() == 'true'
+            
+            # Safety check: require confirmation
+            if not confirm:
+                return JsonResponse({
+                    'status': 'confirmation_required',
+                    'message': 'Add ?confirm=true to confirm deletion',
+                    'route_id': route_id,
+                    'danger': 'This action cannot be undone'
+                }, status=400)
+            
+            # Get the route
+            try:
+                route = Route.objects.get(id=route_id)
+            except Route.DoesNotExist:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Route with ID {route_id} not found'
+                }, status=404)
+            
+            # Store info before deletion
+            route_info = {
+                'id': route.id,
+                'name': route.name,
+                'departure': route.departure,
+                'arrival': route.arrival,
+                'created_by': route.created_by.username if route.created_by else 'Unknown',
+                'created_at': route.created_at.strftime('%Y-%m-%d %H:%M')
+            }
+            
+            # Perform deletion based on type
+            if delete_type == 'hard':
+                # HARD DELETE - Permanent removal
+                route.delete()
+                action = 'hard_deleted'
+                message = 'Route permanently deleted from database'
+                warning = 'This action cannot be undone. Route is gone forever.'
+            else:
+                # SOFT DELETE - Mark as inactive
+                if hasattr(route, 'is_active'):
+                    route.is_active = False
+                    route.save()
+                else:
+                    # If no is_active field, use hard delete
+                    route.delete()
+                    action = 'hard_deleted'
+                    message = 'Route permanently deleted (no soft delete support)'
+                    warning = 'Route deleted (no soft delete support)'
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': message,
+                        'action': action,
+                        'route_info': route_info,
+                        'warning': warning,
+                        'deleted_at': timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+                    })
+                
+                action = 'soft_deleted'
+                message = 'Route marked as inactive (soft delete)'
+                warning = 'Route can be restored later.'
+            
+            # Return success response
+            return JsonResponse({
+                'status': 'success',
+                'message': message,
+                'action': action,
+                'route_info': route_info,
+                'warning': warning,
+                'deleted_at': timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"❌ AdvancedDeleteRouteAPI Error: {str(e)}")
+            
+            return JsonResponse({
+                'status': 'error',
+                'message': str(e),
+                'details': error_details[:300]
+            }, status=400)
+    
+    # Support GET method for browsers
+    def get(self, request, route_id):
+        return self.delete(request, route_id)
+
+
+# ==================== RESTORE ROUTE API ====================
+class RestoreRouteAPI(APIView):
+    """
+    API to restore soft-deleted routes
+    Only works if route has is_active field
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request, route_id):
+        try:
+            print(f"🔄 RestoreRouteAPI: Restoring route {route_id}")
+            
+            # Get the route
+            try:
+                route = Route.objects.get(id=route_id)
+            except Route.DoesNotExist:
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Route with ID {route_id} not found'
+                }, status=404)
+            
+            # Check if route has is_active field
+            if not hasattr(route, 'is_active'):
+                return JsonResponse({
+                    'status': 'error',
+                    'message': 'Route does not support soft delete/restore',
+                    'suggestion': 'Add is_active field to Route model'
+                }, status=400)
+            
+            # Check if route is actually inactive
+            if route.is_active:
+                return JsonResponse({
+                    'status': 'info',
+                    'message': 'Route is already active',
+                    'route_id': route.id,
+                    'route_name': route.name
+                })
+            
+            # Restore the route
+            route.is_active = True
+            route.save()
             
             return JsonResponse({
                 'status': 'success',
-                'message': 'Route deleted successfully'
+                'message': 'Route restored successfully',
+                'route_id': route.id,
+                'route_name': route.name,
+                'restored_at': timezone.now().strftime('%Y-%m-%d %H:%M:%S')
             })
             
-        except Route.DoesNotExist:
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Route not found'
-            }, status=404)
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"❌ RestoreRouteAPI Error: {str(e)}")
+            
             return JsonResponse({
                 'status': 'error',
                 'message': str(e)
             }, status=400)
+# ==================== DELETE ROUTE API ====================
+# ==================== DELETE ROUTE API ====================
+class DeleteRouteAPI(APIView):
+    """
+    SIMPLE DELETE API - No confirmation required
+    Works with frontend delete button
+    """
+    permission_classes = [AllowAny]
+    
+    def delete(self, request, route_id):
+        try:
+            print(f"🗑️ DELETE Route API called for ID: {route_id}")
+            
+            # 1. Find the route
+            try:
+                route = Route.objects.get(id=route_id)
+            except Route.DoesNotExist:
+                print(f"❌ Route {route_id} not found")
+                return JsonResponse({
+                    'status': 'error',
+                    'message': f'Route with ID {route_id} not found'
+                }, status=404)
+            
+            # 2. Log route info
+            route_info = {
+                'id': route.id,
+                'name': route.name,
+                'departure': route.departure,
+                'arrival': route.arrival
+            }
+            print(f"🗑️ Deleting route: {route_info}")
+            
+            # 3. Delete permanently
+            route.delete()
+            
+            # 4. Return success
+            response_data = {
+                'status': 'success',
+                'message': f'Route "{route_info["name"]}" deleted successfully',
+                'deleted_route': route_info,
+                'deleted_at': timezone.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            print(f"✅ Delete successful: {response_data}")
+            
+            return JsonResponse(response_data)
+            
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            print(f"❌ DELETE API Error: {str(e)}")
+            print(f"❌ Traceback: {error_trace}")
+            
+            return JsonResponse({
+                'status': 'error',
+                'message': f'Error deleting route: {str(e)}',
+                'debug_info': error_trace[:500]
+            }, status=500)
 
+# ==================== IMPORT ROUTE API ====================
 class ImportRouteAPI(APIView):
+    """
+    API endpoint for importing routes from text format
+    """
     def post(self, request):
         try:
             route_text = request.data.get('route_text', '').strip()
@@ -1137,17 +1661,17 @@ class ImportRouteAPI(APIView):
                 'message': str(e)
             }, status=400)
 
-# ==================== ROUTE SEARCH API - IMPROVED VERSION ====================
+# ==================== ROUTE SEARCH API ====================
 class RouteSearchAPI(APIView):
     """
-    IMPROVED API for searching routes - supports BOTH IATA and ICAO codes + Case-Insensitive
+    API for searching routes with IATA/ICAO support
     """
     
     permission_classes = [IsAuthenticatedOrReadOnly]
     
     def get(self, request):
         try:
-            # دریافت ورودی و تبدیل به uppercase (برای consistency)
+            # Get and normalize input
             origin = request.GET.get('origin', '').strip().upper()
             destination = request.GET.get('destination', '').strip().upper()
             
@@ -1159,49 +1683,49 @@ class RouteSearchAPI(APIView):
                     'message': 'Both origin and destination airport codes are required'
                 }, status=400)
             
-            # تبدیل به ICAO
+            # Convert to ICAO
             origin_icao = get_icao_code(origin)
             destination_icao = get_icao_code(destination)
             
             print(f"🔍 Code conversion: {origin}→{origin_icao}, {destination}→{destination_icao}")
             
-            # ======== FIX 2: جستجوی ترکیبی + Case-Insensitive ========
+            # Prepare all possible search combinations
             all_routes = []
             seen_ids = set()
             
-            # لیست همه ترکیبات ممکن برای جستجو
+            # List all possible search pairs
             search_pairs = []
             
-            # ترکیب 1: ICAO vs ICAO (اصلی)
+            # Combination 1: ICAO vs ICAO (primary)
             if origin_icao and destination_icao:
                 search_pairs.append((origin_icao, destination_icao))
             
-            # ترکیب 2: IATA vs IATA (اگر کاربر IATA وارد کرده)
+            # Combination 2: IATA vs IATA
             if len(origin) == 3 and len(destination) == 3:
                 search_pairs.append((origin, destination))
             
-            # ترکیب 3: ICAO vs IATA (ترکیبی)
+            # Combination 3: ICAO vs IATA (mixed)
             if origin_icao and len(destination) == 3:
                 search_pairs.append((origin_icao, destination))
             if len(origin) == 3 and destination_icao:
                 search_pairs.append((origin, destination_icao))
             
-            # ترکیب 4: IATA vs ICAO (برعکس)
+            # Combination 4: IATA vs ICAO (reverse mixed)
             if len(origin) == 4 and destination_icao:
                 search_pairs.append((origin, destination_icao))
             if origin_icao and len(destination) == 4:
                 search_pairs.append((origin_icao, destination))
             
-            # حذف duplicate ها
+            # Remove duplicates
             search_pairs = list(set(search_pairs))
             
             print(f"🔍 Search pairs to try: {search_pairs}")
             
-            # جستجو در همه ترکیبات
+            # Search in all combinations
             for dep, arr in search_pairs:
                 print(f"  🔍 Searching: {dep} → {arr}")
                 
-                # استفاده از __iexact برای case-insensitive search
+                # Use __iexact for case-insensitive search
                 routes = Route.objects.filter(
                     departure__iexact=dep,
                     arrival__iexact=arr
@@ -1213,7 +1737,7 @@ class RouteSearchAPI(APIView):
                         all_routes.append(route)
                         print(f"    ✅ Found: {route.departure}→{route.arrival} ({route.name})")
             
-            # جستجوی دوطرفه (برعکس)
+            # Bidirectional search (reverse)
             reverse_search_pairs = [(arr, dep) for dep, arr in search_pairs if dep != arr]
             for dep, arr in reverse_search_pairs:
                 print(f"  🔍 Reverse searching: {dep} → {arr}")
@@ -1314,11 +1838,11 @@ class RouteSearchAPI(APIView):
                 'detail': str(e)
             }, status=500)
 
-
 # ==================== DASHBOARD VIEW ====================
-
 def dashboard_view(request):
-    """Main dashboard page"""
+    """
+    Main dashboard page view
+    """
     waypoint_count = Waypoint.objects.count()
     route_count = Route.objects.count()
     airway_count = Airway.objects.count()
