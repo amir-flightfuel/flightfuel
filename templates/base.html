@@ -9,7 +9,7 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{% static 'css/base.css' %}">
-    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text       y=%22.9em%22 font-size=%2290%22>✈️</text></svg>">
 </head>
 <body>
     <!-- TOP BAR -->
@@ -448,6 +448,7 @@
 
         // ==================== EDIT STATE ====================
         let isEditingEnabled = false;
+        let currentMode = 'view'; // 'view' or 'edit'
 
         // ==================== SAVE ROUTE SYSTEM ====================
         let currentRouteToSave = null;
@@ -514,156 +515,185 @@
             }, 3000);
         }
 
-        // ==================== DELETE ROUTE FUNCTIONALITY ====================
-function updateDeleteButtonVisibility() {
-    const btnDelete = document.getElementById('btnDeleteRoute');
-    
-    // فقط اگر در Edit Mode هستیم بررسی کن
-    if (currentMode !== 'edit') {
-        btnDelete.style.display = 'none';
-        btnDelete.disabled = true;
-        return;
-    }
-    
-    const routeFeatures = routeLayer.getSource().getFeatures();
-    
-    if (routeFeatures.length > 0) {
-        const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
-        const props = latestRouteFeature.getProperties();
-        
-        console.log('🔍 Route properties:', props);  // برای debug
-        
-        // Method 1: Check if route has route_id property
-        let hasSavedRouteId = props.route_id !== undefined;
-        
-        // Method 2: Check if route has id property (for backward compatibility)
-        if (!hasSavedRouteId && props.id !== undefined) {
-            hasSavedRouteId = true;
-            // Set route_id from id if missing
-            if (!props.route_id && props.id) {
-                latestRouteFeature.set('route_id', props.id);
+        // ==================== UPDATE EDIT BUTTONS STATE ====================
+        function updateEditButtonsState() {
+            const btnSave = document.getElementById('btnSave');
+            const btnSaveAs = document.getElementById('btnSaveAs');
+            const btnDelete = document.getElementById('btnDeleteRoute');
+            const editStatusText = document.getElementById('editStatusText');
+            const editHint = document.getElementById('editHint');
+            
+            // حالت 1: اگر Edit Mode نیستیم
+            if (currentMode !== 'edit') {
+                btnSave.disabled = true;
+                btnSaveAs.disabled = true;
+                btnDelete.disabled = true;
+                btnDelete.style.display = 'none';
+                
+                if (editHint) {
+                    editHint.innerHTML = `
+                        <i class="fas fa-info-circle"></i>
+                        Switch to <strong>Edit Mode</strong> to enable save/delete functions
+                    `;
+                }
+                return;
+            }
+            
+            // حالت 2: اگر Edit Mode هستیم ولی Enable Editing کلیک نکردیم
+            if (currentMode === 'edit' && !isEditingEnabled) {
+                btnSave.disabled = true;
+                btnSaveAs.disabled = true;
+                btnDelete.disabled = true;
+                btnDelete.style.display = 'none';
+                
+                if (editStatusText) {
+                    editStatusText.textContent = '(Disabled)';
+                    editStatusText.className = 'edit-status';
+                }
+                
+                if (editHint) {
+                    editHint.innerHTML = `
+                        <i class="fas fa-info-circle"></i>
+                        Click <strong>Enable Editing</strong> to activate save/delete buttons
+                    `;
+                }
+                return;
+            }
+            
+            // حالت 3: اگر Edit Mode + Enable Editing فعال است
+            if (currentMode === 'edit' && isEditingEnabled) {
+                // Save و Save As همیشه فعال
+                btnSave.disabled = false;
+                btnSaveAs.disabled = false;
+                
+                if (editStatusText) {
+                    editStatusText.textContent = '(Active)';
+                    editStatusText.className = 'edit-status active';
+                }
+                
+                // Delete فقط اگر مسیر ذخیره شده داریم
+                const routeFeatures = routeLayer.getSource().getFeatures();
+                if (routeFeatures.length > 0) {
+                    const latestFeature = routeFeatures[routeFeatures.length - 1];
+                    const props = latestFeature.getProperties();
+                    const hasSavedRoute = props.route_id || props.id || existingRouteId;
+                    
+                    if (hasSavedRoute) {
+                        btnDelete.disabled = false;
+                        btnDelete.style.display = 'flex';
+                    } else {
+                        btnDelete.disabled = true;
+                        btnDelete.style.display = 'none';
+                    }
+                } else {
+                    btnDelete.disabled = true;
+                    btnDelete.style.display = 'none';
+                }
+                
+                if (editHint) {
+                    editHint.innerHTML = `
+                        <i class="fas fa-check-circle"></i>
+                        Editing enabled! You can now save or delete routes
+                    `;
+                    editHint.classList.add('active');
+                }
             }
         }
-        
-        // Method 3: Check global existingRouteId (loaded from search)
-        if (!hasSavedRouteId && existingRouteId) {
-            hasSavedRouteId = true;
-            latestRouteFeature.set('route_id', existingRouteId);
-        }
-        
-        btnDelete.style.display = hasSavedRouteId ? 'flex' : 'none';
-        btnDelete.disabled = !hasSavedRouteId;
-        
-        if (hasSavedRouteId) {
-            // Use route_id from feature or global variable
-            existingRouteId = props.route_id || props.id || existingRouteId;
-            existingRouteName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
-            
-            console.log('✅ Delete button enabled for route:', {
-                route_id: existingRouteId,
-                name: existingRouteName
-            });
-        }
-    } else {
-        btnDelete.style.display = 'none';
-        btnDelete.disabled = true;
-    }
-}
 
-async function deleteCurrentRoute() {
-    // Use existingRouteId from global variable (set when loading route)
-    if (!existingRouteId) {
-        // Fallback: try to get route_id from the feature
-        const routeFeatures = routeLayer.getSource().getFeatures();
-        if (routeFeatures.length > 0) {
-            const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
-            const props = latestRouteFeature.getProperties();
-            existingRouteId = props.route_id || props.id;
-            existingRouteName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
-        }
-        
-        if (!existingRouteId) {
-            showStatus('❌ Please load or create a route first', 'error');
-            return;
-        }
-    }
-    
-    const confirmed = confirm(`Delete route: "${existingRouteName || 'Unnamed Route'}"?`);
-    if (!confirmed) return;
-    
-    try {
-        const btnDelete = document.getElementById('btnDeleteRoute');
-        const originalHtml = btnDelete.innerHTML;
-        btnDelete.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
-        btnDelete.disabled = true;
-        
-        console.log('🗑️ Deleting route ID:', existingRouteId);
-        
-        // Use simple DELETE without confirm parameter
-        const response = await fetch(`/api/delete-route/${existingRouteId}/`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': getCookie('csrftoken'),
-                'Content-Type': 'application/json'
+        // ==================== DELETE ROUTE FUNCTIONALITY ====================
+        async function deleteCurrentRoute() {
+            if (!existingRouteId) {
+                const routeFeatures = routeLayer.getSource().getFeatures();
+                if (routeFeatures.length > 0) {
+                    const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+                    const props = latestRouteFeature.getProperties();
+                    existingRouteId = props.route_id || props.id;
+                    existingRouteName = props.name || `${props.departure || ''} to ${props.arrival || ''}`;
+                }
+                
+                if (!existingRouteId) {
+                    showStatus('❌ Please load or create a route first', 'error');
+                    return;
+                }
             }
-        });
-        
-        const data = await response.json();
-        console.log('🗑️ Delete response:', data);
-        
-        btnDelete.innerHTML = originalHtml;
-        btnDelete.disabled = false;
-        
-        if (data.status === 'success') {
-            showStatus(`✅ ${data.message}`, 'success');
             
-            // Clear route from map
-            routeLayer.getSource().clear();
-            routeLayer.setVisible(false);
-            document.getElementById('toggleRoute').checked = false;
-            document.getElementById('routeInfo').classList.remove('active');
+            const confirmed = confirm(`Delete route: "${existingRouteName || 'Unnamed Route'}"?`);
+            if (!confirmed) return;
             
-            // Reset all variables
-            currentRouteToSave = null;
-            existingRouteId = null;
-            existingRouteName = '';
-            
-            // Update delete button
-            updateDeleteButtonVisibility();
-            
-        } else {
-            showStatus(`❌ ${data.message}`, 'error');
+            try {
+                const btnDelete = document.getElementById('btnDeleteRoute');
+                const originalHtml = btnDelete.innerHTML;
+                btnDelete.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+                btnDelete.disabled = true;
+                
+                console.log('🗑️ Deleting route ID:', existingRouteId);
+                
+                const response = await fetch(`/api/delete-route/${existingRouteId}/`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken'),
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                console.log('🗑️ Delete response:', data);
+                
+                btnDelete.innerHTML = originalHtml;
+                btnDelete.disabled = false;
+                
+                if (data.status === 'success') {
+                    showStatus(`✅ ${data.message}`, 'success');
+                    
+                    routeLayer.getSource().clear();
+                    routeLayer.setVisible(false);
+                    document.getElementById('toggleRoute').checked = false;
+                    document.getElementById('routeInfo').classList.remove('active');
+                    
+                    currentRouteToSave = null;
+                    existingRouteId = null;
+                    existingRouteName = '';
+                    
+                    updateEditButtonsState();
+                    
+                } else {
+                    showStatus(`❌ ${data.message}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('❌ Delete error:', error);
+                
+                const btnDelete = document.getElementById('btnDeleteRoute');
+                btnDelete.innerHTML = '<i class="fas fa-trash-alt"></i> Delete';
+                btnDelete.disabled = false;
+                
+                showStatus(`❌ Delete failed: ${error.message}`, 'error');
+            }
         }
-        
-    } catch (error) {
-        console.error('❌ Delete error:', error);
-        
-        const btnDelete = document.getElementById('btnDeleteRoute');
-        btnDelete.innerHTML = '<i class="fas fa-trash-alt"></i> Delete';
-        btnDelete.disabled = false;
-        
-        showStatus(`❌ Delete failed: ${error.message}`, 'error');
-    }
-}
+
         // ==================== ROUTE CHANGE MONITOR ====================
         function setupRouteChangeMonitor() {
-            // وقتی مسیر اضافه یا حذف می‌شود
             routeLayer.getSource().on('addfeature', function() {
-                setTimeout(updateDeleteButtonVisibility, 100);
+                setTimeout(updateEditButtonsState, 100);
             });
             
             routeLayer.getSource().on('removefeature', function() {
-                setTimeout(updateDeleteButtonVisibility, 100);
+                setTimeout(updateEditButtonsState, 100);
             });
             
-            // وقتی ویژگی‌های مسیر تغییر می‌کنند (مثلاً پس از ذخیره)
             routeLayer.getSource().on('changefeature', function() {
-                setTimeout(updateDeleteButtonVisibility, 100);
+                setTimeout(updateEditButtonsState, 100);
             });
         }
 
         // ==================== SAVE MODAL FUNCTIONS ====================
         function showSaveRouteModal(isSaveAs = false, isEditing = false, routeName = '') {
+            // فقط اگر در حالت ویرایش فعال باشیم اجازه ذخیره بده
+            if (currentMode !== 'edit' || !isEditingEnabled) {
+                showStatus('❌ Please enable editing first', 'error');
+                return;
+            }
+            
             currentSaveAction = isSaveAs ? 'saveAs' : 'save';
             isEditingExistingRoute = isEditing;
             existingRouteName = routeName;
@@ -676,13 +706,11 @@ async function deleteCurrentRoute() {
             const routeNameInput = document.getElementById('routeNameInput');
             
             if (isSaveAs) {
-                // Save As Modal
                 modalTitle.textContent = 'Save As New Route';
                 modalIcon.className = 'fas fa-copy';
                 confirmBtn.innerHTML = '<i class="fas fa-check"></i> Save As New';
                 saveOptionsGroup.style.display = 'none';
                 
-                // Set default name
                 if (currentRouteToSave && currentRouteToSave.departure && currentRouteToSave.arrival) {
                     routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
                 } else {
@@ -693,30 +721,25 @@ async function deleteCurrentRoute() {
                 routeNameInput.placeholder = 'Enter name for new route';
                 
             } else if (isEditing) {
-                // Editing existing route - Simple Overwrite Confirmation
                 modalTitle.textContent = 'Overwrite Route';
                 modalIcon.className = 'fas fa-sync-alt';
                 confirmBtn.innerHTML = '<i class="fas fa-check"></i> Overwrite';
                 saveOptionsGroup.style.display = 'none';
                 
-                // Show existing route name (read-only)
                 routeNameInput.value = routeName;
                 routeNameInput.readOnly = true;
                 routeNameInput.style.background = '#f5f5f5';
                 routeNameInput.placeholder = '';
                 
-                // Change modal style for overwrite
                 modal.classList.add('overwrite-mode');
                 
             } else {
-                // Normal Save (New Route)
                 modalTitle.textContent = 'Save Route';
                 modalIcon.className = 'fas fa-save';
                 confirmBtn.innerHTML = '<i class="fas fa-check"></i> Save Route';
                 saveOptionsGroup.style.display = 'block';
                 modal.classList.remove('overwrite-mode');
                 
-                // Set default route name
                 if (currentRouteToSave && currentRouteToSave.departure && currentRouteToSave.arrival) {
                     routeNameInput.value = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
                 } else {
@@ -727,7 +750,6 @@ async function deleteCurrentRoute() {
                 routeNameInput.placeholder = 'Enter route name';
             }
             
-            // Show modal
             modal.classList.add('active');
             if (!isEditing) {
                 routeNameInput.focus();
@@ -750,163 +772,138 @@ async function deleteCurrentRoute() {
             existingRouteName = '';
         }
 
-// ==================== SIMPLE SAVE FUNCTION ====================
-async function simpleSaveWithAction(action, routeId = null, routeName = '') {
-    try {
-        // ========== 1. CHECK IF WE HAVE ROUTE DATA ==========
-        if (!currentRouteToSave) {
-            console.log('🔄 currentRouteToSave is null, checking route layer...');
-            
-            // Try to get route from the map layer
-            const routeFeatures = routeLayer.getSource().getFeatures();
-            if (routeFeatures.length === 0) {
-                showStatus('❌ No route to save. Please create a route first.', 'error');
+        // ==================== SIMPLE SAVE FUNCTION ====================
+        async function simpleSaveWithAction(action, routeId = null, routeName = '') {
+            // چک کردن وضعیت ویرایش
+            if (currentMode !== 'edit' || !isEditingEnabled) {
+                showStatus('❌ Please enable editing first', 'error');
                 return;
             }
             
-            const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
-            const geometry = latestRouteFeature.getGeometry();
-            
-            if (!geometry) {
-                showStatus('❌ Route has no geometry data', 'error');
-                return;
-            }
-            
-            // ========== 2. RECREATE ROUTE DATA FROM LAYER ==========
-            const coordinates = geometry.getCoordinates();
-            const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
-            
-            // Calculate total distance
-            let totalDistance = 0;
-            for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
-                const coord1 = lonLatCoordinates[i];
-                const coord2 = lonLatCoordinates[i + 1];
-                totalDistance += calculateDistance(coord1, coord2);
-            }
-            
-            // Get airport codes from feature properties or select boxes
-            const props = latestRouteFeature.getProperties();
-            let departure = props.departure || '';
-            let arrival = props.arrival || '';
-            
-            // If not in properties, get from select boxes
-            if (!departure || !arrival) {
-                departure = $('#departureSelect').val() || '';
-                arrival = $('#arrivalSelect').val() || '';
-            }
-            
-            // Clean airport codes
-            departure = departure.replace(/[^A-Z]/g, '').substring(0, 4);
-            arrival = arrival.replace(/[^A-Z]/g, '').substring(0, 4);
-            
-            // Create currentRouteToSave object
-            currentRouteToSave = {
-                isSaveAs: (action === 'save_as'),
-                coordinates: lonLatCoordinates,
-                totalDistance: totalDistance,
-                departure: departure,
-                arrival: arrival,
-                feature: latestRouteFeature
-            };
-            
-            console.log('🔄 Recreated currentRouteToSave from route layer:', {
-                departure: departure,
-                arrival: arrival,
-                points: lonLatCoordinates.length,
-                distance: totalDistance
-            });
-        }
-        
-        // ========== 3. CHECK IF EDITING EXISTING ROUTE ==========
-        if (isEditingExistingRoute && existingRouteId) {
-            routeId = existingRouteId;
-            action = 'overwrite';
-        }
-        
-        // ========== 4. USE STORED ROUTE NAME IF EDITING ==========
-        if (isEditingExistingRoute && existingRouteName) {
-            routeName = existingRouteName;
-        }
-        
-        // ========== 5. USE DEFAULT NAME IF EMPTY ==========
-        if (!routeName || routeName.trim() === '') {
-            routeName = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
-        }
-        
-        // ========== 6. PREPARE PAYLOAD ==========
-        const payload = {
-            name: routeName,
-            departure: currentRouteToSave.departure,
-            arrival: currentRouteToSave.arrival,
-            coordinates: currentRouteToSave.coordinates,
-            total_distance: currentRouteToSave.totalDistance
-        };
-        
-        // ========== 7. SET API URL BASED ON ACTION ==========
-        let apiUrl = '/api/save-route/';
-        
-        if (action === 'save_as') {
-            apiUrl = '/api/save-route-as/';
-        } else if (action === 'overwrite' && routeId) {
-            apiUrl = '/api/save-route/';
-            payload.action = 'overwrite';
-            payload.route_id = routeId;
-        }
-        
-        console.log('📤 Saving to:', apiUrl, 'Payload:', payload);
-        
-        // ========== 8. SEND REQUEST ==========
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: JSON.stringify(payload)
-        });
-        
-        const data = await response.json();
-        console.log('📥 Response:', data);
-        
-        // ========== 9. HANDLE RESPONSE ==========
-        if (data.status === 'success') {
-            showStatus(`✅ ${data.message}`, 'success');
-            
-            // Update route_id in the feature if we have one
-            if (data.route_id && currentRouteToSave && currentRouteToSave.feature) {
-                currentRouteToSave.feature.set('route_id', data.route_id);
-                existingRouteId = data.route_id;
-                existingRouteName = routeName;
+            try {
+                if (!currentRouteToSave) {
+                    const routeFeatures = routeLayer.getSource().getFeatures();
+                    if (routeFeatures.length === 0) {
+                        showStatus('❌ No route to save. Please create a route first.', 'error');
+                        return;
+                    }
+                    
+                    const latestRouteFeature = routeFeatures[routeFeatures.length - 1];
+                    const geometry = latestRouteFeature.getGeometry();
+                    
+                    if (!geometry) {
+                        showStatus('❌ Route has no geometry data', 'error');
+                        return;
+                    }
+                    
+                    const coordinates = geometry.getCoordinates();
+                    const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
+                    
+                    let totalDistance = 0;
+                    for (let i = 0; i < lonLatCoordinates.length - 1; i++) {
+                        const coord1 = lonLatCoordinates[i];
+                        const coord2 = lonLatCoordinates[i + 1];
+                        totalDistance += calculateDistance(coord1, coord2);
+                    }
+                    
+                    const props = latestRouteFeature.getProperties();
+                    let departure = props.departure || '';
+                    let arrival = props.arrival || '';
+                    
+                    if (!departure || !arrival) {
+                        departure = $('#departureSelect').val() || '';
+                        arrival = $('#arrivalSelect').val() || '';
+                    }
+                    
+                    departure = departure.replace(/[^A-Z]/g, '').substring(0, 4);
+                    arrival = arrival.replace(/[^A-Z]/g, '').substring(0, 4);
+                    
+                    currentRouteToSave = {
+                        isSaveAs: (action === 'save_as'),
+                        coordinates: lonLatCoordinates,
+                        totalDistance: totalDistance,
+                        departure: departure,
+                        arrival: arrival,
+                        feature: latestRouteFeature
+                    };
+                }
                 
-                console.log('✅ Updated feature with route_id:', data.route_id);
+                if (isEditingExistingRoute && existingRouteId) {
+                    routeId = existingRouteId;
+                    action = 'overwrite';
+                }
+                
+                if (isEditingExistingRoute && existingRouteName) {
+                    routeName = existingRouteName;
+                }
+                
+                if (!routeName || routeName.trim() === '') {
+                    routeName = `${currentRouteToSave.departure}-${currentRouteToSave.arrival}`;
+                }
+                
+                const payload = {
+                    name: routeName,
+                    departure: currentRouteToSave.departure,
+                    arrival: currentRouteToSave.arrival,
+                    coordinates: currentRouteToSave.coordinates,
+                    total_distance: currentRouteToSave.totalDistance
+                };
+                
+                let apiUrl = '/api/save-route/';
+                
+                if (action === 'save_as') {
+                    apiUrl = '/api/save-route-as/';
+                } else if (action === 'overwrite' && routeId) {
+                    apiUrl = '/api/save-route/';
+                    payload.action = 'overwrite';
+                    payload.route_id = routeId;
+                }
+                
+                console.log('📤 Saving to:', apiUrl, 'Payload:', payload);
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                console.log('📥 Response:', data);
+                
+                if (data.status === 'success') {
+                    showStatus(`✅ ${data.message}`, 'success');
+                    
+                    if (data.route_id && currentRouteToSave && currentRouteToSave.feature) {
+                        currentRouteToSave.feature.set('route_id', data.route_id);
+                        existingRouteId = data.route_id;
+                        existingRouteName = routeName;
+                    }
+                    
+                    closeSaveRouteModal();
+                    closeConflictPopup();
+                    
+                    updateEditButtonsState();
+                    
+                } else if (data.status === 'conflict') {
+                    showConflictPopup(data);
+                } else {
+                    showStatus(`❌ ${data.message}`, 'error');
+                }
+                
+            } catch (error) {
+                console.error('❌ Save error:', error);
+                showStatus(`❌ Save failed: ${error.message}`, 'error');
             }
-            
-            // Close modals
-            closeSaveRouteModal();
-            closeConflictPopup();
-            
-            // Update delete button visibility
-            updateDeleteButtonVisibility();
-            
-        } else if (data.status === 'conflict') {
-            // Show conflict resolution popup
-            showConflictPopup(data);
-        } else {
-            showStatus(`❌ ${data.message}`, 'error');
         }
-        
-    } catch (error) {
-        console.error('❌ Save error:', error);
-        showStatus(`❌ Save failed: ${error.message}`, 'error');
-    }
-}
 
         // ==================== EXECUTE SAVE WITH NAME ====================
         async function executeSaveWithName() {
             console.log('🔧 executeSaveWithName called');
             
             try {
-                // Get route name
                 const routeNameInput = document.getElementById('routeNameInput');
                 const routeName = routeNameInput ? routeNameInput.value.trim() : '';
                 
@@ -915,19 +912,16 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                     return;
                 }
                 
-                // Determine action
                 let action = 'new';
                 const modal = document.getElementById('saveRouteModal');
                 const modalTitle = document.getElementById('saveModalTitle');
                 
-                // Check modal type
                 if (modal.classList.contains('overwrite-mode')) {
                     action = 'overwrite';
                 } else if (modalTitle && modalTitle.textContent.includes('Save As')) {
                     action = 'save_as';
                 }
                 
-                // Use your existing function
                 await simpleSaveWithAction(action, existingRouteId, routeName);
                 
             } catch (error) {
@@ -938,6 +932,12 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
 
         // ==================== SAVE ROUTE (MAIN FUNCTION) ====================
         function saveCurrentRoute(isSaveAs = false) {
+            // چک کردن وضعیت ویرایش
+            if (currentMode !== 'edit' || !isEditingEnabled) {
+                showStatus('❌ Please enable editing first', 'error');
+                return;
+            }
+            
             try {
                 console.log('💾 Save requested:', { isSaveAs });
                 
@@ -959,7 +959,6 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                     return;
                 }
                 
-                // Calculate coordinates and distance
                 const coordinates = geometry.getCoordinates();
                 const lonLatCoordinates = coordinates.map(coord => ol.proj.toLonLat(coord));
                 
@@ -970,32 +969,26 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                     totalDistance += calculateDistance(coord1, coord2);
                 }
                 
-                // Get airport codes
                 let departure = '';
                 let arrival = '';
                 
-                // Check if route has properties (loaded from search)
                 const props = latestRouteFeature.getProperties();
                 departure = props.departure || '';
                 arrival = props.arrival || '';
                 
-                // Get route ID and name if exists
                 existingRouteId = props.route_id || null;
                 const routeName = props.name || '';
                 
-                // If not from properties, get from select boxes
                 if (!departure || !arrival) {
                     departure = $('#departureSelect').val();
                     arrival = $('#arrivalSelect').val();
                 }
                 
-                // Clean codes
                 departure = departure.replace(/[^A-Z]/g, '').substring(0, 4);
                 arrival = arrival.replace(/[^A-Z]/g, '').substring(0, 4);
                 
                 console.log('✅ Airport codes:', { departure, arrival, existingRouteId, routeName });
                 
-                // Prepare data for saving
                 currentRouteToSave = {
                     isSaveAs: isSaveAs,
                     coordinates: lonLatCoordinates,
@@ -1005,14 +998,11 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                     feature: latestRouteFeature
                 };
                 
-                // Determine if editing existing route
                 const isEditing = !!existingRouteId;
                 
                 if (isEditing && !isSaveAs) {
-                    // Editing existing route - Show simple overwrite confirmation
                     showSaveRouteModal(false, true, routeName);
                 } else {
-                    // New route or Save As - Show normal modal
                     showSaveRouteModal(isSaveAs, false, '');
                 }
                 
@@ -1054,13 +1044,11 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                 `;
             }
             
-            // HIDE "Save as New" option in conflict popup
             const saveAsOption = document.querySelector('.option-save-as');
             if (saveAsOption) {
                 saveAsOption.style.display = 'none';
             }
             
-            // Show the conflict popup
             document.getElementById('conflictPopup').classList.add('active');
         }
 
@@ -1083,12 +1071,10 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
             
             switch(choice) {
                 case 'overwrite':
-                    // Overwrite existing route
                     simpleSaveWithAction('overwrite', existingRoute.id, existingRoute.name);
                     break;
                     
                 case 'save_as':
-                    // Save as new version (not implemented in this version)
                     simpleSaveWithAction('save_as', null, `${existingRoute.name}_v2`);
                     break;
                     
@@ -1104,11 +1090,17 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
 
         // ==================== SIMPLE EDIT TOGGLE ====================
         function toggleEditing() {
+            // فقط اگر در Edit Mode هستیم
+            if (currentMode !== 'edit') {
+                showStatus('❌ Please switch to Edit Mode first', 'error');
+                return;
+            }
+            
             const routeSource = routeLayer.getSource();
             const routeFeatures = routeSource.getFeatures();
             
-            if (routeFeatures.length === 0) {
-                showStatus('❌ Please create a route first', 'error');
+            if (routeFeatures.length === 0 && !isEditingEnabled) {
+                showStatus('❌ Please create or load a route first', 'error');
                 return;
             }
             
@@ -1148,6 +1140,9 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                 document.getElementById('editHint').classList.remove('active');
                 isEditingEnabled = false;
             }
+            
+            // آپدیت وضعیت دکمه‌ها
+            updateEditButtonsState();
         }
 
         // ==================== EDIT TOOLS FUNCTIONS ====================
@@ -1222,8 +1217,6 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
         }
 
         // ==================== MODE MANAGEMENT ====================
-        let currentMode = 'view';
-
         function updateModeUI() {
             const modeStatus = document.getElementById('modeStatus');
             const modeHint = document.getElementById('modeHint');
@@ -1244,7 +1237,7 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                     `;
                 }
                 
-                // مخفی کردن Edit Tools (و دکمه Delete داخلش)
+                // مخفی کردن Edit Tools
                 document.getElementById('editTools').style.display = 'none';
                 if (isEditingEnabled) {
                     toggleEditing();
@@ -1266,12 +1259,12 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                     `;
                 }
                 
-                // نمایش Edit Tools (و دکمه Delete داخلش)
+                // نمایش Edit Tools
                 document.getElementById('editTools').style.display = 'block';
-                
-                // به‌روزرسانی visibility دکمه Delete
-                updateDeleteButtonVisibility();
             }
+            
+            // آپدیت وضعیت دکمه‌ها
+            updateEditButtonsState();
         }
 
         // ==================== AIRPORT LAYER ====================
@@ -1321,11 +1314,14 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
         });
         map.addLayer(airportLayer);
 
-        const waypointLayer = new ol.layer.Vector({
+         const waypointLayer = new ol.layer.Vector({
             source: new ol.source.Vector({
-                url: '/api/waypoints/',
-                format: new ol.format.GeoJSON()
-            }),
+               url: '/api/waypoints/',
+                format: new ol.format.GeoJSON({
+                 dataProjection: 'EPSG:4326',
+                   featureProjection: 'EPSG:3857'
+        })
+    }),
             visible: false,
             style: function(feature) {
                 const type = feature.get('type');
@@ -1367,11 +1363,14 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
         });
         map.addLayer(waypointLayer);
 
-        const firLayer = new ol.layer.Vector({
-            source: new ol.source.Vector({
-                url: '/api/fir-geojson/',
-                format: new ol.format.GeoJSON()
-            }),
+const firLayer = new ol.layer.Vector({
+    source: new ol.source.Vector({
+        url: '/api/fir-geojson/',
+        format: new ol.format.GeoJSON({
+            dataProjection: 'EPSG:4326',
+            featureProjection: 'EPSG:3857'
+        })
+    }),
             visible: false,
             style: function(feature) {
                 const identifier = feature.get('identifier');
@@ -1510,13 +1509,11 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                     return;
                 }
                 
-                // Show loading
                 loadingSpinner.classList.add('active');
                 searchButton.disabled = true;
                 resultsContainer.innerHTML = '<div class="loading-text">Searching...</div>';
                 resultsCount.textContent = '0';
                 
-                // Call API
                 console.log('📞 Calling API...');
                 const response = await fetch(`/api/route-search/?origin=${originInput}&destination=${destinationInput}`);
                 
@@ -1529,11 +1526,9 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                 const data = await response.json();
                 console.log('✅ API Response data:', data);
                 
-                // Hide loading
                 loadingSpinner.classList.remove('active');
                 searchButton.disabled = false;
                 
-                // Display results
                 if (data.status === 'error') {
                     showStatus(data.message, 'error');
                     resultsContainer.innerHTML = `
@@ -1544,7 +1539,6 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                         </div>
                     `;
                 } else {
-                    // SUCCESS - Show results
                     console.log('🎯 Found routes:', data.count);
                     showStatus(`Found ${data.count} route(s)`, 'success');
                     resultsCount.textContent = data.count;
@@ -1558,7 +1552,6 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                             </div>
                         `;
                     } else {
-                        // Build HTML for results
                         let html = '';
                         data.routes.forEach((route, index) => {
                             html += `
@@ -1608,6 +1601,7 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                         
                         resultsContainer.innerHTML = html;
                         console.log('✅ Results displayed');
+                        forceScrollToBottom();
                     }
                 }
                 
@@ -1874,76 +1868,73 @@ async function simpleSaveWithAction(action, routeId = null, routeName = '') {
                 });
         }
 
-function loadRouteOnMap(route) {
-    console.log('🔍 Loading Route:', route);
-    
-    routeLayer.getSource().clear();
-    
-    if (!route.coordinates || !Array.isArray(route.coordinates)) {
-        showStatus('Error: Route has no valid coordinates data', 'error');
-        return;
-    }
-    
-    let coordinatesData = route.coordinates;
-    if (typeof coordinatesData === 'string') {
-        try {
-            coordinatesData = JSON.parse(coordinatesData);
-        } catch (e) {
-            console.error('Failed to parse coordinates:', e);
-            showStatus('Error: Invalid coordinates format', 'error');
-            return;
+        function loadRouteOnMap(route) {
+            console.log('🔍 Loading Route:', route);
+            
+            routeLayer.getSource().clear();
+            
+            if (!route.coordinates || !Array.isArray(route.coordinates)) {
+                showStatus('Error: Route has no valid coordinates data', 'error');
+                return;
+            }
+            
+            let coordinatesData = route.coordinates;
+            if (typeof coordinatesData === 'string') {
+                try {
+                    coordinatesData = JSON.parse(coordinatesData);
+                } catch (e) {
+                    console.error('Failed to parse coordinates:', e);
+                    showStatus('Error: Invalid coordinates format', 'error');
+                    return;
+                }
+            }
+            
+            if (!Array.isArray(coordinatesData)) {
+                showStatus('Error: Coordinates is not an array', 'error');
+                return;
+            }
+            
+            const coordinates = coordinatesData.map(coord => {
+                if (Array.isArray(coord) && coord.length >= 2) {
+                    return ol.proj.fromLonLat([coord[0], coord[1]]);
+                }
+                return ol.proj.fromLonLat([0, 0]);
+            }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
+            
+            if (coordinates.length < 2) {
+                showStatus('Error: Route has insufficient valid coordinates', 'error');
+                return;
+            }
+            
+            routeFeature = new ol.Feature({
+                geometry: new ol.geom.LineString(coordinates),
+                name: route.name || `Route ${route.departure} to ${route.arrival}`,
+                departure: route.departure,
+                arrival: route.arrival,
+                route_id: route.id,
+                id: route.id
+            });
+            
+            console.log('✅ Feature created with route_id:', route.id);
+            
+            routeLayer.getSource().addFeature(routeFeature);
+            routeLayer.setVisible(true);
+            document.getElementById('toggleRoute').checked = true;
+            sessionStorage.setItem('toggleRoute', 'true');
+            
+            updateRouteInfoForSavedRoute(route);
+            document.getElementById('routeInfo').classList.add('active');
+            
+            existingRouteId = route.id;
+            existingRouteName = route.name || `Route ${route.departure} to ${route.arrival}`;
+            
+            $('#departureSelect').val(route.departure).trigger('change');
+            $('#arrivalSelect').val(route.arrival).trigger('change');
+            
+            setTimeout(updateEditButtonsState, 100);
+            
+            zoomToRoute(coordinates);
         }
-    }
-    
-    if (!Array.isArray(coordinatesData)) {
-        showStatus('Error: Coordinates is not an array', 'error');
-        return;
-    }
-    
-    const coordinates = coordinatesData.map(coord => {
-        if (Array.isArray(coord) && coord.length >= 2) {
-            return ol.proj.fromLonLat([coord[0], coord[1]]);
-        }
-        return ol.proj.fromLonLat([0, 0]);
-    }).filter(coord => coord[0] !== 0 && coord[1] !== 0);
-    
-    if (coordinates.length < 2) {
-        showStatus('Error: Route has insufficient valid coordinates', 'error');
-        return;
-    }
-    
-    // ✅ CRITICAL: Create feature with ALL properties including route_id
-    routeFeature = new ol.Feature({
-        geometry: new ol.geom.LineString(coordinates),
-        name: route.name || `Route ${route.departure} to ${route.arrival}`,
-        departure: route.departure,
-        arrival: route.arrival,
-        route_id: route.id,  // ✅ این خط را حتماً داشته باشید
-        id: route.id          // ✅ اضافه کردن id هم
-    });
-    
-    console.log('✅ Feature created with route_id:', route.id);
-    
-    routeLayer.getSource().addFeature(routeFeature);
-    routeLayer.setVisible(true);
-    document.getElementById('toggleRoute').checked = true;
-    sessionStorage.setItem('toggleRoute', 'true');
-    
-    updateRouteInfoForSavedRoute(route);
-    document.getElementById('routeInfo').classList.add('active');
-    
-    // ✅ CRITICAL: Set the global variables
-    existingRouteId = route.id;
-    existingRouteName = route.name || `Route ${route.departure} to ${route.arrival}`;
-    
-    $('#departureSelect').val(route.departure).trigger('change');
-    $('#arrivalSelect').val(route.arrival).trigger('change');
-    
-    // به‌روزرسانی دکمه Delete
-    setTimeout(updateDeleteButtonVisibility, 100);
-    
-    zoomToRoute(coordinates);
-}
 
         function updateRouteInfo() {
             if (routeFeature) {
@@ -2171,7 +2162,6 @@ function loadRouteOnMap(route) {
                 return;
             }
             
-            // ========== HOVER ON ROUTE ==========
             feature = map.forEachFeatureAtPixel(pixel, function(feature, layer) {
                 if (layer === routeLayer) {
                     return feature;
@@ -2429,27 +2419,12 @@ function loadRouteOnMap(route) {
         document.getElementById('viewMode').addEventListener('click', function() {
             currentMode = 'view';
             updateModeUI();
-            updateDeleteButtonVisibility();
-            
-            // اگر در حال ویرایش بودیم، غیرفعالش کن
-            if (isEditingEnabled) {
-                toggleEditing();
-            }
-            
             showStatus('View mode activated', 'info');
         });
 
         document.getElementById('editMode').addEventListener('click', function() {
             currentMode = 'edit';
             updateModeUI();
-            updateDeleteButtonVisibility();
-            
-            // اگر روتی وجود دارد، ویرایش را پیشنهاد کن
-            const routeFeatures = routeLayer.getSource().getFeatures();
-            if (routeFeatures.length > 0 && !isEditingEnabled) {
-                showStatus('Edit Mode ✓ Now click "Enable Editing" to modify route', 'info');
-            }
-            
             showStatus('Edit mode activated', 'success');
         });
 
@@ -2474,7 +2449,6 @@ function loadRouteOnMap(route) {
             }
         });
         
-        // Close popup when clicking outside
         document.getElementById('conflictPopup').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeConflictPopup();
@@ -2492,29 +2466,27 @@ function loadRouteOnMap(route) {
             }
         });
 
-document.getElementById('clearRoute').addEventListener('click', function() {
-    routeLayer.getSource().clear();
-    routeFeature = null;
-    routeLayer.setVisible(false);
-    document.getElementById('toggleRoute').checked = false;
-    sessionStorage.setItem('toggleRoute', 'false');
-    
-    document.getElementById('routeInfo').classList.remove('active');
-    
-    // ✅ ریست کردن همه متغیرها
-    currentRouteToSave = null;
-    existingRouteId = null;
-    existingRouteName = '';
-    
-    // به‌روزرسانی دکمه Delete
-    updateDeleteButtonVisibility();
-    
-    if (isEditingEnabled) {
-        toggleEditing();
-    }
-    
-    showStatus('Route cleared', 'info');
-});
+        document.getElementById('clearRoute').addEventListener('click', function() {
+            routeLayer.getSource().clear();
+            routeFeature = null;
+            routeLayer.setVisible(false);
+            document.getElementById('toggleRoute').checked = false;
+            sessionStorage.setItem('toggleRoute', 'false');
+            
+            document.getElementById('routeInfo').classList.remove('active');
+            
+            currentRouteToSave = null;
+            existingRouteId = null;
+            existingRouteName = '';
+            
+            updateEditButtonsState();
+            
+            if (isEditingEnabled) {
+                toggleEditing();
+            }
+            
+            showStatus('Route cleared', 'info');
+        });
 
         // ==================== ROUTE SEARCH EVENT LISTENERS ====================
         document.getElementById('routeSearchBtn').addEventListener('click', openRouteSearchModal);
@@ -2544,55 +2516,86 @@ document.getElementById('clearRoute').addEventListener('click', function() {
         document.getElementById('closeSaveModal').addEventListener('click', closeSaveRouteModal);
         document.getElementById('cancelSaveBtn').addEventListener('click', closeSaveRouteModal);
 
-        // Confirm button in save modal
         document.getElementById('confirmSaveBtn').addEventListener('click', executeSaveWithName);
 
-        // Allow Enter key to save
         document.getElementById('routeNameInput').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 executeSaveWithName();
             }
         });
 
-        // Close modal when clicking outside
         document.getElementById('saveRouteModal').addEventListener('click', function(e) {
             if (e.target === this) {
                 closeSaveRouteModal();
             }
         });
 
-        // ==================== LAYER CONTROLS ====================
-        function initLayerControls() {
-            const layerMap = {
-                'toggleAirports': airportLayer,
-                'toggleWaypoints': waypointLayer,
-                'toggleFIR': firLayer,
-                'toggleRoute': routeLayer
-            };
+// ==================== LAYER CONTROLS ====================
+function initLayerControls() {
+    console.log('🔄 Initializing layer controls...');
+    
+    // اول همه لایه‌ها رو غیرفعال کن
+    airportLayer.setVisible(false);
+    waypointLayer.setVisible(false);
+    firLayer.setVisible(false);
+    routeLayer.setVisible(false);
+    
+    // فقط Route رو فعال کن (برای شروع)
+    routeLayer.setVisible(true);
+    document.getElementById('toggleRoute').checked = true;
+    
+    const layerMap = {
+        'toggleAirports': airportLayer,
+        'toggleWaypoints': waypointLayer,
+        'toggleFIR': firLayer,
+        'toggleRoute': routeLayer
+    };
 
-            Object.keys(layerMap).forEach(checkboxId => {
-                const checkbox = document.getElementById(checkboxId);
-                const layer = layerMap[checkboxId];
-                
-                const savedState = sessionStorage.getItem(checkboxId);
-                
-                if (savedState !== null) {
-                    const isVisible = savedState === 'true';
-                    checkbox.checked = isVisible;
-                    layer.setVisible(isVisible);
-                } else {
-                    checkbox.checked = false;
-                    layer.setVisible(false);
-                    sessionStorage.setItem(checkboxId, 'false');
-                }
+    Object.keys(layerMap).forEach(checkboxId => {
+        const checkbox = document.getElementById(checkboxId);
+        const layer = layerMap[checkboxId];
+        
+        // اول چک‌باکس رو غیرفعال کن
+        checkbox.checked = false;
+        
+        // فقط برای Route حالت ذخیره شده رو چک کن
+        if (checkboxId === 'toggleRoute') {
+            const savedState = sessionStorage.getItem(checkboxId);
+            if (savedState !== null) {
+                const isVisible = savedState === 'true';
+                checkbox.checked = isVisible;
+                layer.setVisible(isVisible);
+            } else {
+                checkbox.checked = true;
+                layer.setVisible(true);
+                sessionStorage.setItem(checkboxId, 'true');
+            }
+        } else {
+            // بقیه لایه‌ها غیرفعال باشن
+            checkbox.checked = false;
+            layer.setVisible(false);
+            sessionStorage.setItem(checkboxId, 'false');
+        }
 
-                checkbox.addEventListener('change', function() {
-                    const isChecked = this.checked;
+        checkbox.addEventListener('change', function() {
+            const isChecked = this.checked;
+            
+            // تاخیر برای جلوگیری از ارور
+            setTimeout(() => {
+                try {
                     layer.setVisible(isChecked);
                     sessionStorage.setItem(checkboxId, isChecked.toString());
-                });
-            });
-        }
+                    console.log(`✅ Layer ${checkboxId}: ${isChecked ? 'ON' : 'OFF'}`);
+                } catch (error) {
+                    console.error(`❌ Error toggling ${checkboxId}:`, error);
+                    showStatus(`Error loading ${checkboxId.replace('toggle', '')} data`, 'error');
+                }
+            }, 100);
+        });
+    });
+    
+    console.log('✅ Layer controls initialized');
+}
 
         // ==================== RESIZABLE SIDEBAR ====================
         document.addEventListener('DOMContentLoaded', function() {
@@ -2716,30 +2719,23 @@ document.getElementById('clearRoute').addEventListener('click', function() {
             console.log('🔍 Searching for:', searchTerm);
             showStatus(`Searching for "${searchTerm}"...`, 'info');
             
-            // Reset all highlights
             resetAllHighlights();
             
             try {
                 let foundItems = [];
                 let activatedLayer = null;
                 
-                // ترتیب اولویت جستجو
-                // 1. اول فرودگاه‌ها
                 const airportResults = searchInAirports(searchTerm);
                 if (airportResults.length > 0) {
                     foundItems = airportResults;
                     activatedLayer = 'airports';
                 }
-                
-                // 2. اگر فرودگاه پیدا نشد، waypoints
                 else {
                     const waypointResults = searchInWaypoints(searchTerm);
                     if (waypointResults.length > 0) {
                         foundItems = waypointResults;
                         activatedLayer = 'waypoints';
                     }
-                    
-                    // 3. اگر waypoint هم پیدا نشد، FIRها
                     else {
                         const firResults = searchInFIRs(searchTerm);
                         if (firResults.length > 0) {
@@ -2749,11 +2745,8 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                     }
                 }
                 
-                // نمایش نتایج
                 if (foundItems.length > 0) {
                     displaySearchResults(foundItems, searchTerm);
-                    
-                    // فقط لایه مربوطه را روشن کن، بقیه را خاموش کن
                     setOnlyLayerActive(activatedLayer);
                     
                 } else {
@@ -2766,9 +2759,7 @@ document.getElementById('clearRoute').addEventListener('click', function() {
             }
         }
 
-        // فقط یک لایه را فعال کن، بقیه را غیرفعال
         function setOnlyLayerActive(layerName) {
-            // همه لایه‌ها را اول خاموش کن
             airportLayer.setVisible(false);
             waypointLayer.setVisible(false);
             firLayer.setVisible(false);
@@ -2781,7 +2772,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
             sessionStorage.setItem('toggleWaypoints', 'false');
             sessionStorage.setItem('toggleFIR', 'false');
             
-            // حالا فقط لایه مورد نظر را روشن کن
             if (layerName === 'airports') {
                 airportLayer.setVisible(true);
                 document.getElementById('toggleAirports').checked = true;
@@ -2802,7 +2792,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
             }
         }
 
-        // توابع جستجو
         function searchInAirports(searchTerm) {
             const results = [];
             const source = airportLayer.getSource();
@@ -2916,7 +2905,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
             
             layer.setStyle(function(layerFeature) {
                 if (layerFeature === feature) {
-                    // Highlight style
                     if (layer === firLayer) {
                         return new ol.style.Style({
                             stroke: new ol.style.Stroke({
@@ -2956,21 +2944,18 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                     }
                 }
                 
-                // Return original style for other features
                 if (typeof originalStyle === 'function') {
                     return originalStyle(layerFeature);
                 }
                 return originalStyle;
             });
             
-            // Auto-remove highlight after 10 seconds
             setTimeout(() => {
                 layer.setStyle(originalStyle);
             }, 10000);
         }
 
         function resetAllHighlights() {
-            // Reset airport layer
             airportLayer.setStyle(new ol.style.Style({
                 image: new ol.style.Circle({
                     radius: 6,
@@ -2979,7 +2964,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 })
             }));
             
-            // Reset waypoint layer
             waypointLayer.setStyle(function(feature) {
                 const type = feature.get('type');
                 let color, icon;
@@ -3007,7 +2991,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 });
             });
             
-            // Reset FIR layer
             firLayer.setStyle(function(feature) {
                 const identifier = feature.get('identifier');
                 
@@ -3034,11 +3017,9 @@ document.getElementById('clearRoute').addEventListener('click', function() {
 
         function displaySearchResults(results, searchTerm) {
             if (results.length === 1) {
-                // Single result - zoom to it
                 const result = results[0];
                 zoomToResult(result);
                 
-                // Show status
                 const name = result.properties.name || 
                             result.properties.identifier || 
                             result.properties.iata || 
@@ -3046,7 +3027,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 showStatus(`✅ Found: ${name}`, 'success');
                 
             } else {
-                // Multiple results - show simple popup
                 showResultsPopup(results, searchTerm);
             }
         }
@@ -3055,14 +3035,12 @@ document.getElementById('clearRoute').addEventListener('click', function() {
             if (!result || !result.coordinates) return;
             
             if (result.type === 'fir') {
-                // Zoom to FIR extent
                 map.getView().fit(result.coordinates, {
                     padding: [50, 50, 50, 50],
                     duration: 1000,
                     maxZoom: 8
                 });
             } else {
-                // Zoom to point
                 map.getView().animate({
                     center: result.coordinates,
                     zoom: result.type === 'airport' ? 12 : 10,
@@ -3072,7 +3050,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
         }
 
         function showResultsPopup(results, searchTerm) {
-            // Create a simple popup
             const popup = document.createElement('div');
             popup.className = 'search-results-popup';
             popup.innerHTML = `
@@ -3108,7 +3085,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 </div>
             `;
             
-            // Style the popup
             popup.style.cssText = `
                 position: fixed;
                 top: 50%;
@@ -3126,12 +3102,10 @@ document.getElementById('clearRoute').addEventListener('click', function() {
             
             document.body.appendChild(popup);
             
-            // Add close button event
             popup.querySelector('.close-popup').addEventListener('click', () => {
                 popup.remove();
             });
             
-            // Add zoom buttons events
             popup.querySelectorAll('.zoom-to-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const index = parseInt(this.getAttribute('data-index'));
@@ -3141,7 +3115,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 });
             });
             
-            // Close on background click
             setTimeout(() => {
                 const overlay = document.createElement('div');
                 overlay.style.cssText = `
@@ -3161,7 +3134,6 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 });
             }, 10);
             
-            // Auto-close after 15 seconds
             setTimeout(() => {
                 if (popup.parentNode) {
                     popup.remove();
@@ -3177,13 +3149,53 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 default: return 'fa-map-marker';
             }
         }
-
+// ==================== FORCE SCROLL TO BOTTOM ====================
+function forceScrollToBottom() {
+    console.log('🔄 Forcing scroll to bottom...');
+    
+    const container = document.getElementById('routeSearchResults');
+    const content = document.getElementById('searchResultsContent');
+    
+    if (!container || !content) {
+        console.log('❌ Container not found');
+        return;
+    }
+    
+    // چندبار تلاش برای اسکرول
+    const attempts = [100, 300, 500];
+    
+    attempts.forEach(delay => {
+        setTimeout(() => {
+            const contentHeight = content.scrollHeight;
+            const containerHeight = container.clientHeight;
+            
+            console.log(`📏 Scroll attempt ${delay}ms:`, {
+                contentHeight,
+                containerHeight,
+                scrollTop: container.scrollTop
+            });
+            
+            // اسکرول به پایین
+            container.scrollTop = contentHeight - containerHeight + 30;
+            
+            // همچنین آخرین آیتم رو مشخص کن
+            const lastItem = content.querySelector('.route-result-item:last-child');
+            if (lastItem) {
+                lastItem.scrollIntoView({ 
+                    behavior: 'smooth',
+                    block: 'end'
+                });
+            }
+            
+        }, delay);
+    });
+}
         // ==================== INITIALIZATION ====================
         initLayerControls();
         activateTool('select');
         updateModeUI();
         setupRouteChangeMonitor();
-        updateDeleteButtonVisibility();
+        updateEditButtonsState(); // این خط مهم
         
         // Load airports into select boxes
         fetch('/api/airports/')
@@ -3214,7 +3226,7 @@ document.getElementById('clearRoute').addEventListener('click', function() {
                 showStatus('Error loading airports data', 'error');
             });
         
-        console.log('✅ FlightFuel Application Fully Initialized with Delete Functionality');
+        console.log('✅ FlightFuel Application Fully Initialized');
         showStatus('FlightFuel ready!', 'success');
         
     </script>
